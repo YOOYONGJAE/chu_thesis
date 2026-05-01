@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+full_echo_project/env/
+*.png
