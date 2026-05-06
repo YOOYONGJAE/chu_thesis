@@ -1,5 +1,18 @@
+import math
 import random
 from collections import deque
+from echo_controller import EchoController
+
+
+def _clamp01(x):
+    return max(0.0, min(1.0, x))
+
+
+def _signed_ratio01(x, scale):
+    """0 → 0.5, 양수 → >0.5, 음수 → <0.5 (tanh 기반)"""
+    if scale == 0:
+        return 0.5
+    return 0.5 + 0.5 * math.tanh(x / scale)
 
 
 class Packet:
@@ -29,6 +42,22 @@ class Node:
 
         self.T_est = 0.0
         self.T_max = 1.0
+
+        # ΔQ_min: 목적지별 직전 Q_min 저장
+        self.prev_Q_min = {d: 1.0 for d in range(num_nodes) if d != node_id}
+
+        # TD_error_ema: TD 에러의 지수이동평균
+        self.td_error_ema = 0.0
+        self.td_ema_alpha = 0.1  # EMA 감쇠 계수
+
+        # route_switching_recent: 최근 500 tick 내 y* 변경 기록 [(tick, y_star), ...]
+        self.y_star_history = deque()
+
+        # echo_age_avg: 목적지 d, 이웃 n별 마지막 echo tick
+        self.last_echo_tick = {
+            d: {n: 0 for n in neighbors}
+            for d in range(num_nodes) if d != node_id
+        }
 
     # -------------------------------------------------------------------------
     # T_est 업데이트 (AQFE / AQRERM)
@@ -66,6 +95,8 @@ class Node:
             return self._route_aqfe(packet, current_tick, all_nodes)
         elif self.algorithm == 'aqrerm':
             return self._route_aqrerm(packet, current_tick, all_nodes)
+        elif self.algorithm == 'learned_aqrerm':
+            return self._route_learned_aqrerm(packet, current_tick, all_nodes)
         else:
             raise ValueError(f"Unknown algorithm: {self.algorithm}")
 
@@ -145,6 +176,109 @@ class Node:
                 self.Q[dst][n] += eta2 * (q + s + t_n - self.Q[dst][n])
 
         # Route Memory 갱신
+        new_memory = packet.route_memory + [self.id]
+        if len(new_memory) > L:
+            new_memory = new_memory[-L:]
+        packet.route_memory = new_memory
+
+        return y_star
+
+    def _route_learned_aqrerm(self, packet, current_tick, all_nodes):
+        dst = packet.dst
+        eta = self.params['eta']
+        k = self.params['k']
+        L = self.params['L']
+
+        self.update_T_est()
+
+        # --- 상태값 계산 ---
+        q_values = list(self.Q[dst].values())
+
+        # Q_min, Q_avg, Q_spread, Q_variance
+        Q_min      = min(q_values)
+        Q_avg      = sum(q_values) / len(q_values)
+        Q_spread   = max(q_values) - Q_min
+        Q_variance = sum((v - Q_avg) ** 2 for v in q_values) / len(q_values)
+
+        # ΔQ_min: 현재 Q_min - 직전 Q_min
+        delta_Q_min = Q_min - self.prev_Q_min[dst]
+        self.prev_Q_min[dst] = Q_min
+
+        # TD_error_ema: 직전 업데이트의 EMA (아직 업데이트 전이므로 현재값 사용)
+        TD_error_ema = self.td_error_ema
+
+        # queue_len: 현재 큐 길이
+        queue_len = len(self.queue)
+
+        # route_switching_recent: 최근 500 tick 내 y* 변경 횟수
+        self.y_star_history = deque(
+            [(t, y) for t, y in self.y_star_history if current_tick - t <= 500]
+        )
+        route_switching_recent = sum(
+            1 for i in range(1, len(self.y_star_history))
+            if self.y_star_history[i][1] != self.y_star_history[i-1][1]
+        )
+
+        # echo_age_avg: 목적지 d 기준 이웃별 마지막 echo 이후 경과 tick 평균
+        echo_age_avg = sum(
+            current_tick - self.last_echo_tick[dst][n]
+            for n in self.neighbors
+        ) / len(self.neighbors)
+
+        # T_ratio: AQRERM의 p와 동일한 값 (참고용 상태값)
+        T_ratio = self.T_est / self.T_max if self.T_max > 0 else 0.0
+
+        T_max = self.T_max if self.T_max > 0 else 1.0
+        state = [
+            _clamp01(Q_min              / T_max),
+            _clamp01(Q_avg              / T_max),
+            _clamp01(Q_spread           / T_max),
+            _clamp01(Q_variance ** 0.5  / T_max),
+            _signed_ratio01(delta_Q_min,  T_max),
+            _clamp01(TD_error_ema       / T_max),
+            _clamp01(queue_len          / 10),
+            _clamp01(route_switching_recent / 10),
+            _clamp01(echo_age_avg       / 500),
+            T_ratio,
+        ]
+
+        # 에코 컨트롤러로 p 계산
+        p = self.params['controller'].predict(state)
+
+        visited = set(packet.route_memory)
+        candidates = [n for n in self.neighbors if n not in visited]
+        if not candidates:
+            candidates = self.neighbors
+
+        y_star = min(candidates, key=lambda n: self.Q[dst][n])
+        q = current_tick - packet.queue_entry_tick
+        s = 1
+
+        eta2 = p * eta * k
+
+        echo_set = {y_star}
+        for n in self.neighbors:
+            if n != y_star and random.random() < p:
+                echo_set.add(n)
+
+        for n in echo_set:
+            t_n = all_nodes[n].best_estimate(dst, exclude_node=self.id)
+            td_error = q + s + t_n - self.Q[dst][n]
+            if n == y_star:
+                self.Q[dst][n] += eta * td_error
+            else:
+                self.Q[dst][n] += eta2 * td_error
+
+            # last_echo_tick 갱신
+            self.last_echo_tick[dst][n] = current_tick
+
+        # TD_error_ema 갱신 (y*의 TD error 기준)
+        td_error_ystar = q + s + all_nodes[y_star].best_estimate(dst, exclude_node=self.id) - self.Q[dst][y_star]
+        self.td_error_ema = (1 - self.td_ema_alpha) * self.td_error_ema + self.td_ema_alpha * abs(td_error_ystar)
+
+        # y_star_history 갱신
+        self.y_star_history.append((current_tick, y_star))
+
         new_memory = packet.route_memory + [self.id]
         if len(new_memory) > L:
             new_memory = new_memory[-L:]

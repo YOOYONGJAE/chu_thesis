@@ -10,9 +10,9 @@ SEED = 800
 PARAMS = {'eta': 0.9, 'k': 0.556, 'L': 3}
 TOPO = {'num_nodes': G_N, 'adjacency': G_A}
 
-ALGORITHMS = ['q_routing', 'aqfe', 'aqrerm']
-LABELS = {'q_routing': 'Q-routing', 'aqfe': 'AQFE', 'aqrerm': 'AQRERM'}
-COLORS = {'q_routing': 'blue', 'aqfe': 'orange', 'aqrerm': 'green'}
+ALGORITHMS = ['q_routing', 'aqfe', 'aqrerm', 'learned_aqrerm']
+LABELS = {'q_routing': 'Q-routing', 'aqfe': 'AQFE', 'aqrerm': 'AQRERM', 'learned_aqrerm': 'Learned AQRERM'}
+COLORS = {'q_routing': 'blue', 'aqfe': 'orange', 'aqrerm': 'green', 'learned_aqrerm': 'red'}
 
 STAT_INTERVAL = 100
 CUT_TICK = 7000

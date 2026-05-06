@@ -1,6 +1,7 @@
 import random
 import numpy as np
 from node import Node, Packet
+from echo_controller import EchoController
 
 
 class Simulator:
@@ -12,11 +13,19 @@ class Simulator:
         topology: {'num_nodes': int, 'adjacency': dict}
         """
         self.algorithm = algorithm
-        self.params = params
+        self.params = params.copy()
         self.num_nodes = topology['num_nodes']
         adjacency = {k: list(v) for k, v in topology['adjacency'].items()}
+
+        # learned_aqrerm 전용 EchoController 생성
+        if algorithm == 'learned_aqrerm':
+            self.controller = EchoController()
+            self.params['controller'] = self.controller
+        else:
+            self.controller = None
+
         self.nodes = [
-            Node(i, adjacency[i], algorithm, params, self.num_nodes)
+            Node(i, adjacency[i], algorithm, self.params, self.num_nodes)
             for i in range(self.num_nodes)
         ]
         self.rng_traffic = random.Random(seed + 1000)  # 패킷 src/dst 생성용
@@ -96,12 +105,21 @@ class Simulator:
                 pkt = Packet(src=src, dst=dst, created_at=tick)
                 self.nodes[src].incoming.append(pkt)
 
-            # 4. 통계 집계
+            # 4. 통계 집계 및 컨트롤러 학습
             if (tick + 1) % stat_interval == 0:
                 if window_delivered:
-                    adt_series.append(np.mean(window_delivered))
+                    d_window = np.mean(window_delivered)
+                    adt_series.append(d_window)
                 else:
+                    d_window = 0.0
                     adt_series.append(float('nan'))
+
+                # learned_aqrerm: 100 tick마다 reward로 train
+                if self.controller is not None and self.controller.last_state is not None:
+                    reward = -d_window
+                    next_state = self.controller.last_state  # 현재 상태를 next_state로 사용
+                    self.controller.train(reward, next_state)
+
                 window_delivered = []
 
         return adt_series

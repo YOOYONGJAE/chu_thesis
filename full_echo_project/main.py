@@ -21,9 +21,9 @@ L = 3
 
 PARAMS = {'eta': ETA, 'k': K, 'L': L}
 
-ALGORITHMS = ['q_routing', 'aqfe', 'aqrerm']
-LABELS = {'q_routing': 'Q-routing', 'aqfe': 'AQFE', 'aqrerm': 'AQRERM'}
-COLORS = {'q_routing': 'blue', 'aqfe': 'orange', 'aqrerm': 'green'}
+ALGORITHMS = ['q_routing', 'aqfe', 'aqrerm', 'learned_aqrerm']
+LABELS = {'q_routing': 'Q-routing', 'aqfe': 'AQFE', 'aqrerm': 'AQRERM', 'learned_aqrerm': 'Learned AQRERM'}
+COLORS = {'q_routing': 'blue', 'aqfe': 'orange', 'aqrerm': 'green', 'learned_aqrerm': 'red'}
 
 STAT_INTERVAL = 100
 
