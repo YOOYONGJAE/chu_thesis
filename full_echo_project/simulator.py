@@ -2,6 +2,7 @@ import random
 import numpy as np
 from node import Node, Packet
 from echo_controller import EchoController
+from bandit_controller import BanditController
 
 
 class Simulator:
@@ -17,9 +18,12 @@ class Simulator:
         self.num_nodes = topology['num_nodes']
         adjacency = {k: list(v) for k, v in topology['adjacency'].items()}
 
-        # learned_aqrerm 전용 EchoController 생성
+        # 학습 기반 알고리즘용 컨트롤러 생성
         if algorithm == 'learned_aqrerm':
             self.controller = EchoController()
+            self.params['controller'] = self.controller
+        elif algorithm == 'bandit_aqrerm':
+            self.controller = BanditController()
             self.params['controller'] = self.controller
         else:
             self.controller = None
@@ -57,6 +61,9 @@ class Simulator:
         adt_series = []
         window_delivered = []
 
+        # 시뮬레이션 시작 전, learned_aqrerm의 prev_state 초기화
+        prev_d_window = None
+
         for tick in range(total_ticks):
 
             # 0. 링크 차단
@@ -85,8 +92,10 @@ class Simulator:
                 if not node.neighbors:
                     continue
 
+                # 라우팅 결정 (다음 홉 반환)
                 next_hop = node.route(pkt, tick, self.nodes)
 
+                # 목적지에 도착하면 전달 시간 계산하여 window_delivered에 추가, 아니면 다음 홉으로 이동
                 if next_hop == pkt.dst:
                     delivery_time = tick + 1 - pkt.created_at
                     window_delivered.append(delivery_time)
@@ -106,19 +115,29 @@ class Simulator:
                 self.nodes[src].incoming.append(pkt)
 
             # 4. 통계 집계 및 컨트롤러 학습
-            if (tick + 1) % stat_interval == 0:
+            # stat_interval마다 100 tick 동안 배달된 패킷들의 평균 전달 시간 계산하여 ADT 시리즈에 추가
+            if (tick + 1) % stat_interval == 0: # 100 tick마다 통계 집계
                 if window_delivered:
-                    d_window = np.mean(window_delivered)
-                    adt_series.append(d_window)
+                    d_window = np.mean(window_delivered) # 100 tick 동안 배달된 패킷들의 평균 전달 시간
+                    adt_series.append(d_window) 
                 else:
                     d_window = 0.0
                     adt_series.append(float('nan'))
 
                 # learned_aqrerm: 100 tick마다 reward로 train
-                if self.controller is not None and self.controller.last_state is not None:
-                    reward = -d_window
-                    next_state = self.controller.last_state  # 현재 상태를 next_state로 사용
-                    self.controller.train(reward, next_state)
+                # if self.controller is not None and self.controller.last_state is not None:
+                #     reward = -d_window
+                #     next_state = self.controller.last_state  # 현재 상태를 next_state로 사용
+                #     self.controller.train(reward, next_state)
+
+                if self.controller is not None and window_delivered:
+                    if prev_d_window is not None:
+                        # 평균 전달 시간이 줄어들면 양수, 늘어나면 음수 보상. 
+                        # prev_d_window가 0인 경우 작은 수로 나누기 방지
+                        reward = (prev_d_window - d_window) / max(prev_d_window, 1e-6)
+                        self.controller.train(reward)
+
+                    prev_d_window = d_window                
 
                 window_delivered = []
 

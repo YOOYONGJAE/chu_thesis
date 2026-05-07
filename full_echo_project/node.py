@@ -95,7 +95,7 @@ class Node:
             return self._route_aqfe(packet, current_tick, all_nodes)
         elif self.algorithm == 'aqrerm':
             return self._route_aqrerm(packet, current_tick, all_nodes)
-        elif self.algorithm == 'learned_aqrerm':
+        elif self.algorithm in ('learned_aqrerm', 'bandit_aqrerm'):
             return self._route_learned_aqrerm(packet, current_tick, all_nodes)
         else:
             raise ValueError(f"Unknown algorithm: {self.algorithm}")
@@ -183,6 +183,10 @@ class Node:
 
         return y_star
 
+
+    # 역할
+    # 다음 홉을 결정한다.
+    # echo_set을 확률적으로 선정하여 Q 테이블 업데이트
     def _route_learned_aqrerm(self, packet, current_tick, all_nodes):
         dst = packet.dst
         eta = self.params['eta']
@@ -242,7 +246,9 @@ class Node:
             T_ratio,
         ]
 
-        # 에코 컨트롤러로 p 계산
+        # 에코를 위해 에코 컨트롤러로 p 계산. 
+        # 에코 컨트롤러에서 ACTOR가 state를 입력받아 p값을 예측하여 반환
+        # 진행 중에 last state 가 저장됨
         p = self.params['controller'].predict(state)
 
         visited = set(packet.route_memory)
@@ -256,11 +262,13 @@ class Node:
 
         eta2 = p * eta * k
 
+        # 선정된 이웃 y*는 항상 echo, 나머지는 확률 p로 echo
         echo_set = {y_star}
         for n in self.neighbors:
             if n != y_star and random.random() < p:
                 echo_set.add(n)
 
+        # 확률적으로 선정된 echo_set에 대해 Q 테이블 업데이트
         for n in echo_set:
             t_n = all_nodes[n].best_estimate(dst, exclude_node=self.id)
             td_error = q + s + t_n - self.Q[dst][n]
@@ -284,4 +292,5 @@ class Node:
             new_memory = new_memory[-L:]
         packet.route_memory = new_memory
 
+        # 라우팅 결정 (다음 홉 반환)
         return y_star
