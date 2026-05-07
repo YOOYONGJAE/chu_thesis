@@ -64,10 +64,13 @@ class Node:
     # T_est = 모든 목적지에 대해 min_y Q[d][y] 의 평균 (AQRERM 정의)
     # -------------------------------------------------------------------------
     def update_T_est(self):
-        if not self.Q:
+        if not self.Q or not self.neighbors:
             self.T_est = 0.0
             return
-        self.T_est = sum(min(self.Q[d].values()) for d in self.Q) / len(self.Q)
+        self.T_est = sum(
+            min(self.Q[d][n] for n in self.neighbors)
+            for d in self.Q
+        ) / len(self.Q)
         if self.T_est > self.T_max:
             self.T_max = self.T_est
 
@@ -80,9 +83,13 @@ class Node:
             return 0.0
         if dst not in self.Q:
             return float('inf')
-        candidates = {n: v for n, v in self.Q[dst].items() if n != exclude_node}
+        candidates = {
+            n: self.Q[dst][n]
+            for n in self.neighbors
+            if n != exclude_node
+        }
         if not candidates:
-            candidates = self.Q[dst]
+            return float('inf')
         return min(candidates.values())
 
     # -------------------------------------------------------------------------

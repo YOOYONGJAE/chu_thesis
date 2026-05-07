@@ -9,7 +9,14 @@ LR         = 1e-3
 
 
 class BetaPolicy(nn.Module):
-    """state → Beta(α, β) 분포 파라미터"""
+    """
+    state → Beta(α, β) 분포 파라미터
+    Residual 구조: AQRERM의 p_aqrerm = T_est/T_max 를 α, β에 주입
+    학습 전: 분포 평균 ≈ p_aqrerm (AQRERM 그대로)
+    학습 후: 신경망 출력이 보정으로 작용
+    """
+    AQ_SCALE = 3.0   # AQRERM 신호의 영향 크기
+
     def __init__(self):
         super().__init__()
         self.shared = nn.Sequential(
@@ -20,10 +27,16 @@ class BetaPolicy(nn.Module):
         self.beta_head  = nn.Linear(HIDDEN_DIM, 1)
 
     def forward(self, x):
+        # state[9] = T_ratio = T_est/T_max → AQRERM의 p
+        p_aqrerm = x[..., 9].clamp(0.0, 1.0)
         h = self.shared(x)
-        # softplus + 1 로 α, β > 1 보장 → unimodal Beta (학습 안정성)
-        alpha = nn.functional.softplus(self.alpha_head(h)).squeeze(-1) + 1.0
-        beta  = nn.functional.softplus(self.beta_head(h)).squeeze(-1)  + 1.0
+        # softplus + 1 로 α, β > 1 보장 → unimodal Beta
+        alpha = nn.functional.softplus(
+            self.alpha_head(h).squeeze(-1) + self.AQ_SCALE * p_aqrerm
+        ) + 1.0
+        beta  = nn.functional.softplus(
+            self.beta_head(h).squeeze(-1)  + self.AQ_SCALE * (1.0 - p_aqrerm)
+        ) + 1.0
         return alpha, beta
 
 

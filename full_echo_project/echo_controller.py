@@ -9,18 +9,27 @@ LR_CRITIC  = 1e-3
 
 
 class Actor(nn.Module):
-    """state → p (0~1)"""
+    """
+    state → p (0~1)
+    Residual 구조: p = sigmoid( delta(s) + logit(p_aqrerm) )
+    p_aqrerm = state[9] = T_est/T_max (AQRERM의 p)
+    학습 전: delta≈0 → p ≈ p_aqrerm (AQRERM 그대로)
+    학습 후: delta가 보정값으로 작용
+    """
     def __init__(self):
         super().__init__()
-        self.net = nn.Sequential(
+        self.shared = nn.Sequential(
             nn.Linear(STATE_DIM, HIDDEN_DIM),
             nn.ReLU(),
-            nn.Linear(HIDDEN_DIM, 1),
-            nn.Sigmoid()
         )
+        self.head = nn.Linear(HIDDEN_DIM, 1)
 
     def forward(self, x):
-        return self.net(x).squeeze()
+        p_aqrerm = x[..., 9].clamp(1e-4, 1.0 - 1e-4)
+        h = self.shared(x)
+        delta = self.head(h).squeeze(-1)
+        aq_logit = torch.log(p_aqrerm / (1.0 - p_aqrerm))
+        return torch.sigmoid(delta + aq_logit)
 
 
 class Critic(nn.Module):

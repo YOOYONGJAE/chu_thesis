@@ -21,7 +21,7 @@ L = 3
 
 PARAMS = {'eta': ETA, 'k': K, 'L': L}
 
-ALGORITHMS = ['q_routing', 'aqfe', 'aqrerm', 'learned_aqrerm', 'bandit_aqrerm']
+ALGORITHMS = ['q_routing', 'aqfe', 'aqrerm', 'learned_aqrerm']
 LABELS = {'q_routing': 'Q-routing', 'aqfe': 'AQFE', 'aqrerm': 'AQRERM',
           'learned_aqrerm': 'Learned AQRERM', 'bandit_aqrerm': 'Bandit AQRERM'}
 COLORS = {'q_routing': 'blue', 'aqfe': 'orange', 'aqrerm': 'green',
