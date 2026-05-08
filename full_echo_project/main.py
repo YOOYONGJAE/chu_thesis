@@ -17,15 +17,18 @@ TOPOLOGY_NSFNET = {'num_nodes': NSFNET_NUM_NODES, 'adjacency': NSFNET_ADJACENCY}
 # -------------------------------------------------------------------------
 ETA = 0.9
 K = 0.5 / ETA       # eta*k = 0.5 이므로 k = 0.5/0.9 ≈ 0.556
-L = 3
+L = 1
+C = 0.5             # AQLRERM 큐 길이 페널티 가중치
 
-PARAMS = {'eta': ETA, 'k': K, 'L': L}
+PARAMS = {'eta': ETA, 'k': K, 'L': L, 'c': C}
 
-ALGORITHMS = ['q_routing', 'aqfe', 'aqrerm', 'learned_aqrerm']
+ALGORITHMS = ['q_routing', 'aqfe', 'aqrerm', 'aqlrerm']
 LABELS = {'q_routing': 'Q-routing', 'aqfe': 'AQFE', 'aqrerm': 'AQRERM',
+          'aqlrerm': 'AQLRERM',
           'learned_aqrerm': 'Learned AQRERM', 'bandit_aqrerm': 'Bandit AQRERM'}
 COLORS = {'q_routing': 'blue', 'aqfe': 'orange', 'aqrerm': 'green',
-          'learned_aqrerm': 'red', 'bandit_aqrerm': 'purple'}
+          'aqlrerm': 'red',
+          'learned_aqrerm': 'brown', 'bandit_aqrerm': 'purple'}
 
 STAT_INTERVAL = 100
 
@@ -54,16 +57,21 @@ def run_experiment(lam, total_ticks, ax, title, seed, topology):
 # 토폴로지별 실험 실행 및 저장
 # -------------------------------------------------------------------------
 def run_topology(topology, name, filename):
-    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+    EXPERIMENTS = [
+        {'lam': 1,   'total_ticks': 5000,  'title': 'λ=1'},
+        {'lam': 2,   'total_ticks': 10000, 'title': 'λ=2'},
+        {'lam': 3,   'total_ticks': 14000, 'title': 'λ=3'},
+        {'lam': 3.7, 'total_ticks': 14000, 'title': 'λ=3.7'},
+    ]
+
+    fig, axes = plt.subplots(1, 4, figsize=(24, 5))
     fig.suptitle(name)
 
-    print(f"\n=== {name} 저부하 실험 (lambda=1) ===")
-    run_experiment(lam=1, total_ticks=5000, ax=axes[0], title='Low Load (λ=1)',
-                   seed=SEED, topology=topology)
-
-    print(f"=== {name} 고부하 실험 (lambda=3) ===")
-    run_experiment(lam=3, total_ticks=14000, ax=axes[1], title='High Load (λ=3)',
-                   seed=SEED, topology=topology)
+    for ax, exp in zip(axes, EXPERIMENTS):
+        print(f"\n=== {name} λ={exp['lam']} ===")
+        run_experiment(lam=exp['lam'], total_ticks=exp['total_ticks'],
+                       ax=ax, title=exp['title'],
+                       seed=SEED, topology=topology)
 
     plt.tight_layout()
     plt.savefig(filename, dpi=150)

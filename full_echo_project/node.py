@@ -102,6 +102,8 @@ class Node:
             return self._route_aqfe(packet, current_tick, all_nodes)
         elif self.algorithm == 'aqrerm':
             return self._route_aqrerm(packet, current_tick, all_nodes)
+        elif self.algorithm == 'aqlrerm':
+            return self._route_aqlrerm(packet, current_tick, all_nodes)
         elif self.algorithm in ('learned_aqrerm', 'bandit_aqrerm'):
             return self._route_learned_aqrerm(packet, current_tick, all_nodes)
         else:
@@ -183,6 +185,55 @@ class Node:
                 self.Q[dst][n] += eta2 * (q + s + t_n - self.Q[dst][n])
 
         # Route Memory 갱신
+        new_memory = packet.route_memory + [self.id]
+        if len(new_memory) > L:
+            new_memory = new_memory[-L:]
+        packet.route_memory = new_memory
+
+        return y_star
+
+    # -------------------------------------------------------------------------
+    # AQLRERM: AQRERM + 큐 길이 페널티를 라우팅 결정에 반영
+    # score(n) = Q[dst][n] + c * len(neighbor.queue)
+    # Q 갱신식과 echo 메커니즘은 AQRERM과 동일
+    # -------------------------------------------------------------------------
+    def _route_aqlrerm(self, packet, current_tick, all_nodes):
+        dst = packet.dst
+        eta = self.params['eta']
+        k = self.params['k']
+        L = self.params['L']
+        c = self.params['c']
+
+        self.update_T_est()
+        p = self.T_est / self.T_max if self.T_max > 0 else 0.0
+
+        visited = set(packet.route_memory)
+        candidates = [n for n in self.neighbors if n not in visited]
+        if not candidates:
+            candidates = self.neighbors
+
+        # 큐 길이 페널티를 더한 score로 다음 홉 선정
+        y_star = min(
+            candidates,
+            key=lambda n: self.Q[dst][n] + c * len(all_nodes[n].queue)
+        )
+        q = current_tick - packet.queue_entry_tick
+        s = 1
+
+        eta2 = p * eta * k
+
+        echo_set = {y_star}
+        for n in self.neighbors:
+            if n != y_star and random.random() < p:
+                echo_set.add(n)
+
+        for n in echo_set:
+            t_n = all_nodes[n].best_estimate(dst, exclude_node=self.id)
+            if n == y_star:
+                self.Q[dst][n] += eta * (q + s + t_n - self.Q[dst][n])
+            else:
+                self.Q[dst][n] += eta2 * (q + s + t_n - self.Q[dst][n])
+
         new_memory = packet.route_memory + [self.id]
         if len(new_memory) > L:
             new_memory = new_memory[-L:]

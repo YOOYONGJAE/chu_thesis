@@ -7,25 +7,28 @@ from simulator import Simulator
 from topology_grid import NUM_NODES as G_N, ADJACENCY as G_A
 
 SEED = 800
-PARAMS = {'eta': 0.9, 'k': 0.556, 'L': 3}
+PARAMS = {'eta': 0.9, 'k': 0.556, 'L': 1, 'c': 0.5}
 TOPO = {'num_nodes': G_N, 'adjacency': G_A}
 
-ALGORITHMS = ['q_routing', 'aqfe', 'aqrerm', 'learned_aqrerm']
+ALGORITHMS = ['q_routing', 'aqfe', 'aqrerm', 'aqlrerm']
 LABELS = {'q_routing': 'Q-routing', 'aqfe': 'AQFE', 'aqrerm': 'AQRERM',
+          'aqlrerm': 'AQLRERM',
           'learned_aqrerm': 'Learned AQRERM', 'bandit_aqrerm': 'Bandit AQRERM'}
 COLORS = {'q_routing': 'blue', 'aqfe': 'orange', 'aqrerm': 'green',
-          'learned_aqrerm': 'red', 'bandit_aqrerm': 'purple'}
+          'aqlrerm': 'red',
+          'learned_aqrerm': 'brown', 'bandit_aqrerm': 'purple'}
 
 STAT_INTERVAL = 100
 CUT_TICK = 7000
 CUT_LINK = (14, 15)
 
 EXPERIMENTS = [
-    {'lam': 1, 'total_ticks': 14000, 'title': f'Low Load (λ=1) — Link {CUT_LINK} cut at tick {CUT_TICK}'},
-    {'lam': 3, 'total_ticks': 14000, 'title': f'High Load (λ=3) — Link {CUT_LINK} cut at tick {CUT_TICK}'},
+    {'lam': lam, 'total_ticks': 14000,
+     'title': f'λ={lam} — Link {CUT_LINK} cut at tick {CUT_TICK}'}
+    for lam in [1, 2, 3, 3.7]
 ]
 
-fig, axes = plt.subplots(1, 2, figsize=(16, 5))
+fig, axes = plt.subplots(1, 4, figsize=(24, 5))
 
 for ax, exp in zip(axes, EXPERIMENTS):
     print(f"\n=== λ={exp['lam']} ===")
@@ -41,6 +44,12 @@ for ax, exp in zip(axes, EXPERIMENTS):
             stat_interval=STAT_INTERVAL,
             link_cuts=[(CUT_TICK, *CUT_LINK)]
         )
+        qlen = sim.queue_len_series
+
+        # 로그: ADT, total_queue_len 시리즈
+        # print(f"    [{LABELS[algo]}]")
+        # print(f"      ADT  : {' '.join(f'{x:5.1f}' for x in adt)}")
+        # print(f"      qlen : {' '.join(f'{x:4d}' for x in qlen)}")
 
         x_axis = np.arange(1, len(adt) + 1) * STAT_INTERVAL
         ax.plot(x_axis, adt, label=LABELS[algo], color=COLORS[algo])

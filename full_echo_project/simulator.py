@@ -59,6 +59,7 @@ class Simulator:
         if link_cuts is None:
             link_cuts = []
         adt_series = []
+        queue_len_series = []   # stat_interval 시점의 모든 노드 queue 길이 합
         window_delivered = []
 
         # 시뮬레이션 시작 전, learned_aqrerm의 prev_state 초기화
@@ -124,6 +125,10 @@ class Simulator:
                     d_window = 0.0
                     adt_series.append(float('nan'))
 
+                # 모든 노드 queue 길이 합산 (현재 시점 네트워크 적체량)
+                total_qlen = sum(len(node.queue) for node in self.nodes)
+                queue_len_series.append(total_qlen)
+
                 # learned_aqrerm: 100 tick마다 reward로 train
                 # if self.controller is not None and self.controller.last_state is not None:
                 #     reward = -d_window
@@ -141,4 +146,5 @@ class Simulator:
 
                 window_delivered = []
 
+        self.queue_len_series = queue_len_series
         return adt_series
