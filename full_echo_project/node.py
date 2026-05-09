@@ -59,6 +59,9 @@ class Node:
             for d in range(num_nodes) if d != node_id
         }
 
+        # AQLRERM: echo 응답 시 받은 이웃 큐 길이 캐시 (실시간 직접 읽기 대체)
+        self.last_known_queue = {n: 0 for n in neighbors}
+
     # -------------------------------------------------------------------------
     # T_est 업데이트 (AQFE / AQRERM)
     # T_est = 모든 목적지에 대해 min_y Q[d][y] 의 평균 (AQRERM 정의)
@@ -212,10 +215,10 @@ class Node:
         if not candidates:
             candidates = self.neighbors
 
-        # 큐 길이 페널티를 더한 score로 다음 홉 선정
+        # 캐시된 이웃 큐 길이로 score 계산 (echo 응답 때 받은 stale 값 사용)
         y_star = min(
             candidates,
-            key=lambda n: self.Q[dst][n] + c * len(all_nodes[n].queue)
+            key=lambda n: self.Q[dst][n] + c * self.last_known_queue[n]
         )
         q = current_tick - packet.queue_entry_tick
         s = 1
@@ -229,6 +232,8 @@ class Node:
 
         for n in echo_set:
             t_n = all_nodes[n].best_estimate(dst, exclude_node=self.id)
+            # echo 응답에 piggyback된 큐 길이 캐시 갱신
+            self.last_known_queue[n] = len(all_nodes[n].queue)
             if n == y_star:
                 self.Q[dst][n] += eta * (q + s + t_n - self.Q[dst][n])
             else:

@@ -18,7 +18,7 @@ TOPOLOGY_NSFNET = {'num_nodes': NSFNET_NUM_NODES, 'adjacency': NSFNET_ADJACENCY}
 ETA = 0.9
 K = 0.5 / ETA       # eta*k = 0.5 이므로 k = 0.5/0.9 ≈ 0.556
 L = 1
-C = 0.5             # AQLRERM 큐 길이 페널티 가중치
+C = 0.5            # AQLRERM 큐 길이 페널티 가중치
 
 PARAMS = {'eta': ETA, 'k': K, 'L': L, 'c': C}
 
