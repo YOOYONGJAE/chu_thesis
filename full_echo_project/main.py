@@ -5,12 +5,10 @@ matplotlib.use('Agg')  # GUI 없이 파일로만 저장
 import matplotlib.pyplot as plt
 from simulator import Simulator
 from topology_grid import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACENCY
-from topology_nsfnet import NUM_NODES as NSFNET_NUM_NODES, ADJACENCY as NSFNET_ADJACENCY
 
 SEED = 800
 
 TOPOLOGY_GRID = {'num_nodes': GRID_NUM_NODES, 'adjacency': GRID_ADJACENCY}
-TOPOLOGY_NSFNET = {'num_nodes': NSFNET_NUM_NODES, 'adjacency': NSFNET_ADJACENCY}
 
 # -------------------------------------------------------------------------
 # 파라미터 설정 (AQRERM 논문 기준)
@@ -18,9 +16,8 @@ TOPOLOGY_NSFNET = {'num_nodes': NSFNET_NUM_NODES, 'adjacency': NSFNET_ADJACENCY}
 ETA = 0.9
 K = 0.5 / ETA       # eta*k = 0.5 이므로 k = 0.5/0.9 ≈ 0.556
 L = 1
-C = 0.5            # AQLRERM 큐 길이 페널티 가중치
 
-PARAMS = {'eta': ETA, 'k': K, 'L': L, 'c': C}
+BASE_PARAMS = {'eta': ETA, 'k': K, 'L': L}
 
 ALGORITHMS = ['q_routing', 'aqfe', 'aqrerm', 'aqlrerm']
 LABELS = {'q_routing': 'Q-routing', 'aqfe': 'AQFE', 'aqrerm': 'AQRERM',
@@ -32,53 +29,72 @@ COLORS = {'q_routing': 'blue', 'aqfe': 'orange', 'aqrerm': 'green',
 
 STAT_INTERVAL = 100
 
-# -------------------------------------------------------------------------
-# 단일 부하 실험: ADT vs tick 그래프
-# -------------------------------------------------------------------------
-def run_experiment(lam, total_ticks, ax, title, seed, topology):
-    x_axis = np.arange(1, total_ticks // STAT_INTERVAL + 1) * STAT_INTERVAL
+# c-sweep 설정
+C_VALUES = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+MD_PATH = 'result_grid.md'
 
-    for algo in ALGORITHMS:
-        random.seed(seed)
-        np.random.seed(seed)
-        print(f"  Running {LABELS[algo]} (lambda={lam})...")
-        sim = Simulator(algorithm=algo, params=PARAMS, seed=seed, topology=topology)
-        adt = sim.run(lam=lam, total_ticks=total_ticks, stat_interval=STAT_INTERVAL)
-        ax.plot(x_axis, adt, label=LABELS[algo], color=COLORS[algo])
-
-    ax.set_title(title)
-    ax.set_xlabel('Simulator Time')
-    ax.set_ylabel('Average Delivery Time')
-    ax.legend()
-    ax.grid(True, alpha=0.3)
+EXPERIMENTS = [
+    {'lam': 1,   'total_ticks': 5000,  'title': 'λ=1'},
+    {'lam': 2,   'total_ticks': 10000, 'title': 'λ=2'},
+    {'lam': 3,   'total_ticks': 14000, 'title': 'λ=3'},
+    {'lam': 3.7, 'total_ticks': 14000, 'title': 'λ=3.7'},
+]
 
 
 # -------------------------------------------------------------------------
-# 토폴로지별 실험 실행 및 저장
+# 한 c 값에 대한 실험: 4개 부하별 ADT 그래프 + MD 로그 누적
 # -------------------------------------------------------------------------
-def run_topology(topology, name, filename):
-    EXPERIMENTS = [
-        {'lam': 1,   'total_ticks': 5000,  'title': 'λ=1'},
-        {'lam': 2,   'total_ticks': 10000, 'title': 'λ=2'},
-        {'lam': 3,   'total_ticks': 14000, 'title': 'λ=3'},
-        {'lam': 3.7, 'total_ticks': 14000, 'title': 'λ=3.7'},
-    ]
+def run_one_c(c, md_file):
+    params = {**BASE_PARAMS, 'c': c}
 
     fig, axes = plt.subplots(1, 4, figsize=(24, 5))
-    fig.suptitle(name)
+    fig.suptitle(f"6x6 Grid (c={c})")
+
+    md_file.write(f"## c = {c}\n\n")
 
     for ax, exp in zip(axes, EXPERIMENTS):
-        print(f"\n=== {name} λ={exp['lam']} ===")
-        run_experiment(lam=exp['lam'], total_ticks=exp['total_ticks'],
-                       ax=ax, title=exp['title'],
-                       seed=SEED, topology=topology)
+        lam = exp['lam']
+        total_ticks = exp['total_ticks']
+        x_axis = np.arange(1, total_ticks // STAT_INTERVAL + 1) * STAT_INTERVAL
+
+        md_file.write(f"### λ={lam} ({total_ticks} ticks)\n\n")
+        md_file.write("| algo | generated | delivered | undelivered | delivery_rate |\n")
+        md_file.write("|------|-----------|-----------|-------------|---------------|\n")
+
+        print(f"\n=== c={c} λ={lam} ===")
+        for algo in ALGORITHMS:
+            random.seed(SEED)
+            np.random.seed(SEED)
+            print(f"  Running {LABELS[algo]}...")
+
+            sim = Simulator(algorithm=algo, params=params, seed=SEED, topology=TOPOLOGY_GRID)
+            adt = sim.run(lam=lam, total_ticks=total_ticks, stat_interval=STAT_INTERVAL)
+
+            gen, dlv, und = sim.total_generated, sim.total_delivered, sim.undelivered_count
+            rate = (dlv / gen * 100) if gen > 0 else 0.0
+            print(f"    {LABELS[algo]:18s} generated={gen:6d}  delivered={dlv:6d}  "
+                  f"undelivered={und:6d}  delivery_rate={rate:5.1f}%")
+            md_file.write(f"| {LABELS[algo]} | {gen} | {dlv} | {und} | {rate:.1f}% |\n")
+
+            ax.plot(x_axis, adt, label=LABELS[algo], color=COLORS[algo])
+
+        md_file.write("\n")
+        ax.set_title(exp['title'])
+        ax.set_xlabel('Simulator Time')
+        ax.set_ylabel('Average Delivery Time')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
+    filename = f"result_grid_c_{c}.png"
     plt.savefig(filename, dpi=150)
     print(f"결과 저장: {filename}")
     plt.close()
 
 
 if __name__ == '__main__':
-    run_topology(TOPOLOGY_GRID,   '6x6 Grid',  'results_grid.png')
-    run_topology(TOPOLOGY_NSFNET, 'NSFNET',    'results_nsfnet.png')
+    with open(MD_PATH, 'w', encoding='utf-8') as md:
+        md.write('# 6x6 Grid c-sweep\n\n')
+        for c in C_VALUES:
+            run_one_c(c, md)
+    print(f"\n모든 c-sweep 완료. 로그: {MD_PATH}")

@@ -62,6 +62,10 @@ class Simulator:
         queue_len_series = []   # stat_interval 시점의 모든 노드 queue 길이 합
         window_delivered = []
 
+        # 도달 여부 카운터 (selection bias 진단용)
+        total_generated = 0
+        total_delivered = 0
+
         # 시뮬레이션 시작 전, learned_aqrerm의 prev_state 초기화
         prev_d_window = None
 
@@ -100,6 +104,7 @@ class Simulator:
                 if next_hop == pkt.dst:
                     delivery_time = tick + 1 - pkt.created_at
                     window_delivered.append(delivery_time)
+                    total_delivered += 1
                 else:
                     link = (i, next_hop) if (i, next_hop) in self.link_usage else (next_hop, i)
                     self.link_usage[link] += 1
@@ -114,6 +119,7 @@ class Simulator:
                     dst += 1
                 pkt = Packet(src=src, dst=dst, created_at=tick)
                 self.nodes[src].incoming.append(pkt)
+                total_generated += 1
 
             # 4. 통계 집계 및 컨트롤러 학습
             # stat_interval마다 100 tick 동안 배달된 패킷들의 평균 전달 시간 계산하여 ADT 시리즈에 추가
@@ -146,5 +152,11 @@ class Simulator:
 
                 window_delivered = []
 
+        # 시뮬레이션 종료 시점에 네트워크에 남아있는 미배달 패킷 수
         self.queue_len_series = queue_len_series
+        self.total_generated = total_generated
+        self.total_delivered = total_delivered
+        self.undelivered_count = sum(
+            len(node.queue) + len(node.incoming) for node in self.nodes
+        )
         return adt_series
