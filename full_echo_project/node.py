@@ -105,6 +105,8 @@ class Node:
             return self._route_aqfe(packet, current_tick, all_nodes)
         elif self.algorithm == 'aqrerm':
             return self._route_aqrerm(packet, current_tick, all_nodes)
+        elif self.algorithm == 'aqrerm_no_mem':
+            return self._route_aqrerm_no_mem(packet, current_tick, all_nodes)
         elif self.algorithm == 'aqlrerm':
             return self._route_aqlrerm(packet, current_tick, all_nodes)
         elif self.algorithm in ('learned_aqrerm', 'bandit_aqrerm'):
@@ -192,6 +194,40 @@ class Node:
         if len(new_memory) > L:
             new_memory = new_memory[-L:]
         packet.route_memory = new_memory
+
+        return y_star
+
+    # -------------------------------------------------------------------------
+    # AQRERM_no_mem: AQRERM에서 Route Memory만 끈 변형 (디버깅용)
+    # - 방문 노드 후보 제외 X
+    # - 이웃 t 추정 시 self.id 제외 X
+    # - packet.route_memory도 갱신하지 않음
+    # -------------------------------------------------------------------------
+    def _route_aqrerm_no_mem(self, packet, current_tick, all_nodes):
+        dst = packet.dst
+        eta = self.params['eta']
+        k = self.params['k']
+
+        self.update_T_est()
+        p = self.T_est / self.T_max if self.T_max > 0 else 0.0
+
+        y_star = min(self.neighbors, key=lambda n: self.Q[dst][n])
+        q = current_tick - packet.queue_entry_tick
+        s = 1
+
+        eta2 = p * eta * k
+
+        echo_set = {y_star}
+        for n in self.neighbors:
+            if n != y_star and random.random() < p:
+                echo_set.add(n)
+
+        for n in echo_set:
+            t_n = all_nodes[n].best_estimate(dst)
+            if n == y_star:
+                self.Q[dst][n] += eta * (q + s + t_n - self.Q[dst][n])
+            else:
+                self.Q[dst][n] += eta2 * (q + s + t_n - self.Q[dst][n])
 
         return y_star
 
