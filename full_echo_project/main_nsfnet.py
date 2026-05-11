@@ -4,11 +4,11 @@ import matplotlib
 matplotlib.use('Agg')  # GUI 없이 파일로만 저장
 import matplotlib.pyplot as plt
 from simulator import Simulator
-from topology_grid import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACENCY
+from topology_nsfnet import NUM_NODES as NSFNET_NUM_NODES, ADJACENCY as NSFNET_ADJACENCY
 
 SEED = 800
 
-TOPOLOGY_GRID = {'num_nodes': GRID_NUM_NODES, 'adjacency': GRID_ADJACENCY}
+TOPOLOGY_NSFNET = {'num_nodes': NSFNET_NUM_NODES, 'adjacency': NSFNET_ADJACENCY}
 
 # -------------------------------------------------------------------------
 # 파라미터 설정 (AQRERM 논문 기준)
@@ -31,7 +31,7 @@ STAT_INTERVAL = 100
 
 # c-sweep 설정
 C_VALUES = [0.5]
-MD_PATH = 'result_grid.md'
+MD_PATH = 'result_nsfnet.md'
 
 EXPERIMENTS = [
     {'lam': 1,   'total_ticks': 5000,  'title': 'λ=1'},
@@ -48,7 +48,7 @@ def run_one_c(c, md_file):
     params = {**BASE_PARAMS, 'c': c}
 
     fig, axes = plt.subplots(1, 4, figsize=(24, 5))
-    fig.suptitle(f"6x6 Grid (c={c}, L={L})")
+    fig.suptitle(f"NSFNET (c={c}, L={L})")
 
     md_file.write(f"## c = {c}\n\n")
 
@@ -67,7 +67,7 @@ def run_one_c(c, md_file):
             np.random.seed(SEED)
             print(f"  Running {LABELS[algo]}...")
 
-            sim = Simulator(algorithm=algo, params=params, seed=SEED, topology=TOPOLOGY_GRID)
+            sim = Simulator(algorithm=algo, params=params, seed=SEED, topology=TOPOLOGY_NSFNET)
             adt = sim.run(lam=lam, total_ticks=total_ticks, stat_interval=STAT_INTERVAL)
 
             gen, dlv, und = sim.total_generated, sim.total_delivered, sim.undelivered_count
@@ -86,7 +86,7 @@ def run_one_c(c, md_file):
         ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    filename = f"result_grid_c_{c}.png"
+    filename = f"result_nsfnet_c_{c}.png"
     plt.savefig(filename, dpi=150)
     print(f"결과 저장: {filename}")
     plt.close()
@@ -94,7 +94,7 @@ def run_one_c(c, md_file):
 
 if __name__ == '__main__':
     with open(MD_PATH, 'w', encoding='utf-8') as md:
-        md.write('# 6x6 Grid c-sweep\n\n')
+        md.write('# NSFNET c-sweep\n\n')
         for c in C_VALUES:
             run_one_c(c, md)
     print(f"\n모든 c-sweep 완료. 로그: {MD_PATH}")

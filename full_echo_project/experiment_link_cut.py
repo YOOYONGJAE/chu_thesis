@@ -7,17 +7,19 @@ from simulator import Simulator
 from topology_grid import NUM_NODES as G_N, ADJACENCY as G_A
 
 SEED = 800
-BASE_PARAMS = {'eta': 0.9, 'k': 0.556, 'L': 1}
+BASE_PARAMS = {'eta': 0.9, 'k': 0.556, 'L': 10}
 TOPO = {'num_nodes': G_N, 'adjacency': G_A}
 
-ALGORITHMS = ['q_routing', 'aqfe', 'aqrerm', 'aqrerm_no_mem', 'aqlrerm']
+ALGORITHMS = ['aqrerm', 'aqlrerm']
 LABELS = {'q_routing': 'Q-routing', 'aqfe': 'AQFE', 'aqrerm': 'AQRERM',
           'aqrerm_no_mem': 'AQRERM_no_mem',
           'aqlrerm': 'AQLRERM',
+          'aqlrerm_no_mem': 'AQLRERM_no_mem',
           'learned_aqrerm': 'Learned AQRERM', 'bandit_aqrerm': 'Bandit AQRERM'}
-COLORS = {'q_routing': 'blue', 'aqfe': 'orange', 'aqrerm': 'green',
+COLORS = {'q_routing': 'blue', 'aqfe': 'orange', 'aqrerm': 'navy',
           'aqrerm_no_mem': 'magenta',
-          'aqlrerm': 'red',
+          'aqlrerm': 'darkorange',
+          'aqlrerm_no_mem': 'cyan',
           'learned_aqrerm': 'brown', 'bandit_aqrerm': 'purple'}
 
 STAT_INTERVAL = 100
@@ -42,10 +44,10 @@ MD_PATH = 'result_link_cut.md'
 # 한 c 값에 대한 실험: 2개 절단 x 3개 부하 = 6개 패널
 # -------------------------------------------------------------------------
 def run_one_c(c, md_file):
-    params = {**BASE_PARAMS, 'c': c}
+    params = {**BASE_PARAMS, 'c': c, 'memory_cut_tick': CUT_TICK}
 
     fig, axes = plt.subplots(2, 3, figsize=(20, 10))
-    fig.suptitle(f"6x6 Grid (c={c})")
+    fig.suptitle(f"6x6 Grid (c={c}, L={BASE_PARAMS['L']})")
 
     md_file.write(f"## c = {c}\n\n")
 
