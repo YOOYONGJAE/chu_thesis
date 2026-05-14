@@ -19,12 +19,18 @@ L = 3
 
 BASE_PARAMS = {'eta': ETA, 'k': K, 'L': L}
 
-ALGORITHMS = ['aqrerm', 'aqlrerm']
+ALGORITHMS = ['aqrerm', 'aqlrerm', 'aqlrerm_no_mem', 'aqlrerm_l_train', 'aqlrerm_l_close']
 LABELS = {'q_routing': 'Q-routing', 'aqfe': 'AQFE', 'aqrerm': 'AQRERM',
           'aqlrerm': 'AQLRERM',
+          'aqlrerm_no_mem': 'AQLRERM_no_mem',
+          'aqlrerm_l_train': 'AQLRERM_L_TRAIN',
+          'aqlrerm_l_close': 'AQLRERM_L_CLOSE',
           'learned_aqrerm': 'Learned AQRERM', 'bandit_aqrerm': 'Bandit AQRERM'}
 COLORS = {'q_routing': 'blue', 'aqfe': 'orange', 'aqrerm': 'navy',
           'aqlrerm': 'darkorange',
+          'aqlrerm_no_mem': 'cyan',
+          'aqlrerm_l_train': 'black',
+          'aqlrerm_l_close': 'olive',
           'learned_aqrerm': 'brown', 'bandit_aqrerm': 'purple'}
 
 STAT_INTERVAL = 100
@@ -35,9 +41,10 @@ MD_PATH = 'result_grid.md'
 
 EXPERIMENTS = [
     {'lam': 1,   'total_ticks': 5000,  'title': 'λ=1'},
-    {'lam': 2,   'total_ticks': 10000, 'title': 'λ=2'},
+    # {'lam': 2,   'total_ticks': 10000, 'title': 'λ=2'},
+    {'lam': 2.5, 'total_ticks': 10000, 'title': 'λ=2.5'},
     {'lam': 3,   'total_ticks': 14000, 'title': 'λ=3'},
-    {'lam': 3.7, 'total_ticks': 14000, 'title': 'λ=3.7'},
+    {'lam': 3.8, 'total_ticks': 14000, 'title': 'λ=3.8'},
 ]
 
 
