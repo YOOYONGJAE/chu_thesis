@@ -162,6 +162,8 @@ class Simulator:
 
         adt_series = []
         queue_len_series = []   # stat_interval 시점의 모든 노드 queue 길이 합
+        t_est_series     = []   # stat_interval 시점의 네트워크 평균 T_est (finite 만)
+        t_max_series     = []   # stat_interval 시점의 네트워크 평균 T_max (finite 만)
         window_delivered = []
 
         # 도달 여부 카운터 (selection bias 진단용)
@@ -243,6 +245,12 @@ class Simulator:
                 # 모든 노드 queue 길이 합산 (현재 시점 네트워크 적체량)
                 total_qlen = sum(len(node.queue) for node in self.nodes)
                 queue_len_series.append(total_qlen)
+
+                # 네트워크 평균 T_est / T_max — finite 값만 모아 평균
+                t_est_vals = [n.T_est for n in self.nodes if math.isfinite(n.T_est)]
+                t_max_vals = [n.T_max for n in self.nodes if math.isfinite(n.T_max)]
+                t_est_series.append(float(np.mean(t_est_vals)) if t_est_vals else 0.0)
+                t_max_series.append(float(np.mean(t_max_vals)) if t_max_vals else 0.0)
 
                 # learned_aqrerm: 100 tick마다 reward로 train
                 # if self.controller is not None and self.controller.last_state is not None:
@@ -330,6 +338,8 @@ class Simulator:
 
         # 시뮬레이션 종료 시점에 네트워크에 남아있는 미배달 패킷 수
         self.queue_len_series = queue_len_series
+        self.t_est_series     = t_est_series
+        self.t_max_series     = t_max_series
         self.total_generated = total_generated
         self.total_delivered = total_delivered
         self.undelivered_count = sum(

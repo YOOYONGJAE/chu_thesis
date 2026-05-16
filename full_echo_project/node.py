@@ -114,8 +114,10 @@ class Node:
             return self._route_aqrerm_no_mem(packet, current_tick, all_nodes)
         elif self.algorithm == 'aqlrerm':
             return self._route_aqlrerm(packet, current_tick, all_nodes)
-        elif self.algorithm == 'aqlrerm_no_mem':
-            return self._route_aqlrerm_no_mem(packet, current_tick, all_nodes)
+        elif self.algorithm == 'aqlrerm_7000_no_mem':
+            return self._route_aqlrerm_7000_no_mem(packet, current_tick, all_nodes)
+        elif self.algorithm == 'aqlrerm_all_no_mem':
+            return self._route_aqlrerm_all_no_mem(packet, current_tick, all_nodes)
         elif self.algorithm in ('aqlrerm_l_train', 'aqlrerm_l_close'):
             return self._route_aqlrerm_l_train(packet, current_tick, all_nodes)
         elif self.algorithm in ('learned_aqrerm', 'bandit_aqrerm'):
@@ -306,7 +308,8 @@ class Node:
     #   * packet.route_memory 항상 빈 리스트로 유지
     #   (best_estimate의 exclude_node=self.id 효과는 그대로 유지)
     # -------------------------------------------------------------------------
-    def _route_aqlrerm_no_mem(self, packet, current_tick, all_nodes):
+    def _route_aqlrerm_7000_no_mem(self, packet, current_tick, all_nodes):
+        # memory_cut_tick (보통 7000) 이전엔 L=params['L'], 이후엔 L=0 으로 전환
         dst = packet.dst
         eta = self.params['eta']
         k = self.params['k']
@@ -353,6 +356,54 @@ class Node:
                 new_memory = new_memory[-L:]
             packet.route_memory = new_memory
 
+        return y_star
+
+    # -------------------------------------------------------------------------
+    # AQLRERM_ALL_NO_MEM: 시뮬레이션 시작부터 끝까지 L=0 (route memory 영구 비활성)
+    # - memory_cut_tick 분기 없음 — 항상 L=0
+    # - packet.route_memory 항상 빈 리스트, visited 필터링 의미 없음
+    # - 그 외 echo, Q 업데이트, last_known_queue 캐싱은 AQLRERM 본체 그대로
+    # -------------------------------------------------------------------------
+    def _route_aqlrerm_all_no_mem(self, packet, current_tick, all_nodes):
+        dst = packet.dst
+        eta = self.params['eta']
+        k = self.params['k']
+        c = self.params['c']
+
+        # L = 0 영구 강제 — route_memory 매번 빈 리스트로 유지
+        packet.route_memory = []
+
+        self.update_T_est()
+        p = self.T_est / self.T_max if self.T_max > 0 else 0.0
+
+        # visited 항상 비어 있으니 모든 이웃이 후보
+        candidates = list(self.neighbors)
+        if not candidates:
+            return packet.dst   # 이웃 없으면 위로 (보호)
+
+        y_star = min(
+            candidates,
+            key=lambda n: self.Q[dst][n] + c * self.last_known_queue[n]
+        )
+        q = current_tick - packet.queue_entry_tick
+        s = 1
+
+        eta2 = p * eta * k
+
+        echo_set = {y_star}
+        for n in self.neighbors:
+            if n != y_star and random.random() < p:
+                echo_set.add(n)
+
+        for n in echo_set:
+            t_n = all_nodes[n].best_estimate(dst, exclude_node=self.id)
+            self.last_known_queue[n] = len(all_nodes[n].queue)
+            if n == y_star:
+                self.Q[dst][n] += eta * (q + s + t_n - self.Q[dst][n])
+            else:
+                self.Q[dst][n] += eta2 * (q + s + t_n - self.Q[dst][n])
+
+        # route_memory 는 갱신 없이 빈 리스트 유지
         return y_star
 
     # -------------------------------------------------------------------------

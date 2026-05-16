@@ -24,7 +24,7 @@ EXPERIMENTS = [
     {'lam': 1,   'total_ticks': 5000,  'title': 'λ=1'},
     {'lam': 2,   'total_ticks': 10000, 'title': 'λ=2'},
     {'lam': 3,   'total_ticks': 14000, 'title': 'λ=3'},
-    {'lam': 3.7, 'total_ticks': 14000, 'title': 'λ=3.7'},
+    {'lam': 4, 'total_ticks': 14000, 'title': 'λ=4'},
 ]
 
 MD_PATH = 'result_aqrerm_l_6by6.md'

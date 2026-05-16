@@ -158,7 +158,7 @@ class LTrainController:
       predict(state, current_tick)            — 노드가 매 라우팅마다 호출 (cached_L 반환만)
       train(reward)                           — simulator 가 reward 와 함께 학습 트리거
     """
-    ACTIONS = [0, 3]   # L 후보 (사용자 지정)
+    ACTIONS = [0, 1, 3]   # L 후보 (사용자 지정)
     WINDOW  = 100             # L 을 새로 결정하는 주기 (tick) — stat_interval 과 맞춤
 
     def __init__(self):

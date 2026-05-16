@@ -19,16 +19,18 @@ L = 3
 
 BASE_PARAMS = {'eta': ETA, 'k': K, 'L': L}
 
-ALGORITHMS = ['aqrerm', 'aqlrerm', 'aqlrerm_no_mem', 'aqlrerm_l_train', 'aqlrerm_l_close']
+ALGORITHMS = ['aqrerm', 'aqlrerm', 'aqlrerm_all_no_mem', 'aqlrerm_l_train']
 LABELS = {'q_routing': 'Q-routing', 'aqfe': 'AQFE', 'aqrerm': 'AQRERM',
           'aqlrerm': 'AQLRERM',
-          'aqlrerm_no_mem': 'AQLRERM_no_mem',
+          'aqlrerm_7000_no_mem': 'AQLRERM_7000_NO_MEM',
+          'aqlrerm_all_no_mem': 'AQLRERM_ALL_NO_MEM',
           'aqlrerm_l_train': 'AQLRERM_L_TRAIN',
           'aqlrerm_l_close': 'AQLRERM_L_CLOSE',
           'learned_aqrerm': 'Learned AQRERM', 'bandit_aqrerm': 'Bandit AQRERM'}
 COLORS = {'q_routing': 'blue', 'aqfe': 'orange', 'aqrerm': 'navy',
           'aqlrerm': 'darkorange',
-          'aqlrerm_no_mem': 'cyan',
+          'aqlrerm_7000_no_mem': 'cyan',
+          'aqlrerm_all_no_mem': 'teal',
           'aqlrerm_l_train': 'black',
           'aqlrerm_l_close': 'olive',
           'learned_aqrerm': 'brown', 'bandit_aqrerm': 'purple'}
@@ -82,6 +84,24 @@ def run_one_c(c, md_file):
             print(f"    {LABELS[algo]:18s} generated={gen:6d}  delivered={dlv:6d}  "
                   f"undelivered={und:6d}  delivery_rate={rate:5.1f}%")
             md_file.write(f"| {LABELS[algo]} | {gen} | {dlv} | {und} | {rate:.1f}% |\n")
+
+            # ---- T_est / T_max 1000-tick 간격 평균 (시간 흐름 진단) ----
+            # 각 experiment 의 total_ticks 가 다르므로 chunk 수는 total_ticks/1000 으로 자동 계산
+            t_est_series = getattr(sim, 't_est_series', None)
+            t_max_series = getattr(sim, 't_max_series', None)
+            if t_est_series and t_max_series:
+                n_chunks   = max(1, total_ticks // 1000)            # 1000 tick 마다 1 chunk
+                chunk_size = max(1, len(t_est_series) // n_chunks)  # chunk 당 entry 수 (= 10 if stat_interval=100)
+                t_est_chunks = [
+                    float(np.mean(t_est_series[i:i + chunk_size]))
+                    for i in range(0, chunk_size * n_chunks, chunk_size)
+                ]
+                t_max_chunks = [
+                    float(np.mean(t_max_series[i:i + chunk_size]))
+                    for i in range(0, chunk_size * n_chunks, chunk_size)
+                ]
+                print(f"      [T_est ] {' '.join(f'{m:6.2f}' for m in t_est_chunks)}   (1000-tick 평균, 네트워크 avg)")
+                print(f"      [T_max ] {' '.join(f'{m:6.2f}' for m in t_max_chunks)}   (1000-tick 평균, 네트워크 avg)")
 
             ax.plot(x_axis, adt, label=LABELS[algo], color=COLORS[algo])
 

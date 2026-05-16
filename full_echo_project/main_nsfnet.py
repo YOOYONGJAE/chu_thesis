@@ -19,16 +19,18 @@ L = 3
 
 BASE_PARAMS = {'eta': ETA, 'k': K, 'L': L}
 
-ALGORITHMS = ['aqrerm', 'aqlrerm', 'aqlrerm_no_mem', 'aqlrerm_l_train', 'aqlrerm_l_close']
+ALGORITHMS = ['aqrerm', 'aqlrerm', 'aqlrerm_all_no_mem', 'aqlrerm_l_train']
 LABELS = {'q_routing': 'Q-routing', 'aqfe': 'AQFE', 'aqrerm': 'AQRERM',
           'aqlrerm': 'AQLRERM',
-          'aqlrerm_no_mem': 'AQLRERM_no_mem',
+          'aqlrerm_7000_no_mem': 'AQLRERM_7000_NO_MEM',
+          'aqlrerm_all_no_mem': 'AQLRERM_ALL_NO_MEM',
           'aqlrerm_l_train': 'AQLRERM_L_TRAIN',
           'aqlrerm_l_close': 'AQLRERM_L_CLOSE',
           'learned_aqrerm': 'Learned AQRERM', 'bandit_aqrerm': 'Bandit AQRERM'}
 COLORS = {'q_routing': 'blue', 'aqfe': 'orange', 'aqrerm': 'navy',
           'aqlrerm': 'darkorange',
-          'aqlrerm_no_mem': 'cyan',
+          'aqlrerm_7000_no_mem': 'cyan',
+          'aqlrerm_all_no_mem': 'teal',
           'aqlrerm_l_train': 'black',
           'aqlrerm_l_close': 'olive',
           'learned_aqrerm': 'brown', 'bandit_aqrerm': 'purple'}

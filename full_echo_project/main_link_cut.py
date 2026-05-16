@@ -12,30 +12,32 @@ SEED = 800
 BASE_PARAMS = {'eta': 0.9, 'k': 0.556, 'L': 3}
 TOPO = {'num_nodes': G_N, 'adjacency': G_A}
 
-ALGORITHMS = ['aqrerm', 'aqlrerm', 'aqlrerm_no_mem', 'aqlrerm_l_train', 'aqlrerm_l_close']
+ALGORITHMS = ['aqrerm', 'aqlrerm', 'aqlrerm_all_no_mem', 'aqlrerm_7000_no_mem', 'aqlrerm_l_train']
 LABELS = {'q_routing': 'Q-routing', 'aqfe': 'AQFE', 'aqrerm': 'AQRERM',
           'aqrerm_no_mem': 'AQRERM_no_mem',
           'aqlrerm': 'AQLRERM',
-          'aqlrerm_no_mem': 'AQLRERM_no_mem',
+          'aqlrerm_7000_no_mem': 'AQLRERM_7000_NO_MEM',
+          'aqlrerm_all_no_mem': 'AQLRERM_ALL_NO_MEM',
           'aqlrerm_l_train': 'AQLRERM_L_TRAIN',
           'aqlrerm_l_close': 'AQLRERM_L_CLOSE',
           'learned_aqrerm': 'Learned AQRERM', 'bandit_aqrerm': 'Bandit AQRERM'}
 COLORS = {'q_routing': 'blue', 'aqfe': 'orange', 'aqrerm': 'navy',
           'aqrerm_no_mem': 'magenta',
           'aqlrerm': 'darkorange',
-          'aqlrerm_no_mem': 'cyan',
+          'aqlrerm_7000_no_mem': 'cyan',
+          'aqlrerm_all_no_mem': 'teal',
           'aqlrerm_l_train': 'black',
           'aqlrerm_l_close': 'olive',
           'learned_aqrerm': 'brown', 'bandit_aqrerm': 'purple'}
 
 STAT_INTERVAL = 100
 CUT_TICK = 7000
-TOTAL_TICKS = 14000
+TOTAL_TICKS = 20000
 
 # 절단 시나리오: 두 다리만
 CUT_SCENARIOS = [
-    {'name': '(14,15) [bottom bridge]', 'cuts': [(CUT_TICK, 14, 15)]},
     {'name': '(2,3) [top bridge]',      'cuts': [(CUT_TICK, 2, 3)]},
+    {'name': '(3,4) [bottom bridge]', 'cuts': [(CUT_TICK, 3, 4)]},
 ]
 
 # 부하: 세 가지
@@ -93,6 +95,24 @@ def run_one_c(c, md_file):
                       f"undelivered={und:6d}  delivery_rate={rate:5.1f}%")
                 md_file.write(f"| {LABELS[algo]} | {gen} | {dlv} | {und} | {rate:.1f}% |\n")
 
+                # ---- T_est / T_max 시간순 10등분 평균 (절단 전후 추이 진단) ----
+                t_est_series = getattr(sim, 't_est_series', None)
+                t_max_series = getattr(sim, 't_max_series', None)
+                if t_est_series and t_max_series:
+                    n_t = len(t_est_series)
+                    n_chunks = 25
+                    chunk_size = max(1, n_t // n_chunks)
+                    t_est_chunks = [
+                        float(np.mean(t_est_series[i:i + chunk_size]))
+                        for i in range(0, chunk_size * n_chunks, chunk_size)
+                    ]
+                    t_max_chunks = [
+                        float(np.mean(t_max_series[i:i + chunk_size]))
+                        for i in range(0, chunk_size * n_chunks, chunk_size)
+                    ]
+                    print(f"      [T_est ] {' '.join(f'{m:6.2f}' for m in t_est_chunks)}   (시간순 10등분, 네트워크 평균)")
+                    print(f"      [T_max ] {' '.join(f'{m:6.2f}' for m in t_max_chunks)}   (시간순 10등분, 네트워크 평균)")
+
                 # ---- selected_L 진단 로그 (L_TRAIN / L_CLOSE) ----
                 if algo in ('aqlrerm_l_train', 'aqlrerm_l_close') and sim.controller is not None:
                     L_hist = sim.controller.L_history
@@ -104,7 +124,7 @@ def run_one_c(c, md_file):
                             f"L={k}:{v:>6d}({v/total*100:5.1f}%)"
                             for k, v in sorted(counts.items())
                         )
-                        n_chunks = 10
+                        n_chunks = 14
                         chunk_size = max(1, total // n_chunks)
                         chunk_means = [
                             float(np.mean(L_hist[i:i + chunk_size]))
@@ -126,7 +146,7 @@ def run_one_c(c, md_file):
                             f"L={k}:{v:>4d}({v/n_w*100:5.1f}%)"
                             for k, v in sorted(counts_w.items())
                         )
-                        n_chunks = 10
+                        n_chunks = 14
                         chunk_size = max(1, n_w // n_chunks)
                         chunk_means_w = [
                             float(np.mean(L_w_hist[i:i + chunk_size]))
