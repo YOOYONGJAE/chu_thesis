@@ -14,25 +14,63 @@ TOPOLOGY_GRID = {'num_nodes': GRID_NUM_NODES, 'adjacency': GRID_ADJACENCY}
 # 파라미터 설정 (AQRERM 논문 기준)
 # -------------------------------------------------------------------------
 ETA = 0.9
-K = 0.5 / ETA       # eta*k = 0.5 이므로 k = 0.5/0.9 ≈ 0.556
+
+K = 0.5 / ETA       # eta*k = 0.5 이므로 k = 0.5/0.9 ≈ 0.556 
 L = 3
 
 BASE_PARAMS = {'eta': ETA, 'k': K, 'L': L}
 
-ALGORITHMS = ['aqrerm', 'aqlrerm', 'aqlrerm_all_no_mem', 'aqlrerm_l_train']
+ALGORITHMS = [
+    'aqrerm',
+    'aqlrerm_c03',
+    'aqlrerm',
+    # 'aqlrerm_tdec',
+    # 'pfe',
+    # 'pfe_tdec',
+    # 'pfe_c',
+    # 'pfe_c03',
+    # 'aqlrerm_c_ade',
+    'pfe_c_ade',
+    ]
 LABELS = {'q_routing': 'Q-routing', 'aqfe': 'AQFE', 'aqrerm': 'AQRERM',
-          'aqlrerm': 'AQLRERM',
+          'aqlrerm': 'AQLRERM_c=0.5',
+          'aqlrerm_tdec': 'AQLRERM_c=0.5_Tdec',
+          'aqlrerm_low_c': 'AQLRERM_c=0.1',
+          'aqlrerm_c03':   'AQLRERM_c=0.3',
+          'aqlrerm_c07':   'AQLRERM_c=0.7',
+          'aqlrerm_high_c': 'AQLRERM_c=1.0',
           'aqlrerm_7000_no_mem': 'AQLRERM_7000_NO_MEM',
           'aqlrerm_all_no_mem': 'AQLRERM_ALL_NO_MEM',
           'aqlrerm_l_train': 'AQLRERM_L_TRAIN',
           'aqlrerm_l_close': 'AQLRERM_L_CLOSE',
+          'pfe': 'PFE',
+          'pfe_tdec': 'PFE_Tdec',
+          'pfe_c':    'PFE_c=0.5',
+          'pfe_c03':  'PFE_c=0.3',
+          'aqlrerm_c_ade': 'AQLRERM_c=0.5_AdE',
+          'pfe_c_ade':     'PFE_c=0.5_AdE',
           'learned_aqrerm': 'Learned AQRERM', 'bandit_aqrerm': 'Bandit AQRERM'}
-COLORS = {'q_routing': 'blue', 'aqfe': 'orange', 'aqrerm': 'navy',
-          'aqlrerm': 'darkorange',
+COLORS = {'q_routing': 'blue', 'aqfe': 'orange',
+          # === 활성화 변형: family 별 hue 분리, c 값 따라 톤 차이 ===
+          'aqrerm':         'navy',               # 기준선 — 차가운 단일색
+          'aqlrerm':        'darkorange',         # AQLRERM family (오렌지) — c=0.5
+          'aqlrerm_c03':    'gold',               # AQLRERM family — c=0.3 (밝은 오렌지)
+          'aqlrerm_c_ade':  'green',              # AQLRERM + AdE — family 와 구분
+          'pfe_c':          'red',                # PFE family (빨강) — c=0.5
+          'pfe_c03':        'lightcoral',         # PFE family — c=0.3 (밝은 빨강)
+          'pfe_c_ade':      'magenta',            # PFE + AdE — family 와 구분
+
+          # === 비활성화 변형: 기존 매핑 유지 ===
+          'aqlrerm_tdec':   'skyblue',
+          'aqlrerm_low_c':  'chocolate',
+          'aqlrerm_c07':    'magenta',
+          'aqlrerm_high_c': 'darkmagenta',
           'aqlrerm_7000_no_mem': 'cyan',
           'aqlrerm_all_no_mem': 'teal',
           'aqlrerm_l_train': 'black',
           'aqlrerm_l_close': 'olive',
+          'pfe':            'black',
+          'pfe_tdec':       'crimson',
           'learned_aqrerm': 'brown', 'bandit_aqrerm': 'purple'}
 
 STAT_INTERVAL = 100
@@ -42,11 +80,10 @@ C_VALUES = [0.5]
 MD_PATH = 'result_grid.md'
 
 EXPERIMENTS = [
-    {'lam': 1,   'total_ticks': 5000,  'title': 'λ=1'},
-    # {'lam': 2,   'total_ticks': 10000, 'title': 'λ=2'},
-    {'lam': 2.5, 'total_ticks': 10000, 'title': 'λ=2.5'},
-    {'lam': 3,   'total_ticks': 14000, 'title': 'λ=3'},
-    {'lam': 3.8, 'total_ticks': 14000, 'title': 'λ=3.8'},
+    {'lam': 2.5,   'total_ticks': 14000,  'title': 'λ=2.5'},
+    {'lam': 3,   'total_ticks': 10000, 'title': 'λ=3'},
+    {'lam': 3.5, 'total_ticks': 14000, 'title': 'λ=3.5'},
+    {'lam': 4, 'total_ticks': 14000, 'title': 'λ=4'},
 ]
 
 
@@ -56,7 +93,7 @@ EXPERIMENTS = [
 def run_one_c(c, md_file):
     params = {**BASE_PARAMS, 'c': c}
 
-    fig, axes = plt.subplots(1, 4, figsize=(24, 5))
+    fig, axes = plt.subplots(1, 4, figsize=(40, 8))
     fig.suptitle(f"6x6 Grid (c={c}, L={L})")
 
     md_file.write(f"## c = {c}\n\n")
@@ -102,6 +139,24 @@ def run_one_c(c, md_file):
                 ]
                 print(f"      [T_est ] {' '.join(f'{m:6.2f}' for m in t_est_chunks)}   (1000-tick 평균, 네트워크 avg)")
                 print(f"      [T_max ] {' '.join(f'{m:6.2f}' for m in t_max_chunks)}   (1000-tick 평균, 네트워크 avg)")
+
+                # ---- PFE 진단: Full Echo 발동 비율, 평균 누적 포인트 (PFE 일 때만) ----
+                # ratio: 윈도우 동안 (Full Echo 실행 라우팅 / 전체 라우팅 호출) — 0~1
+                # total_point: stat_interval 시점의 네트워크 평균 포인트 잔고
+                if algo in ('pfe', 'pfe_tdec', 'pfe_c', 'pfe_c03', 'pfe_c_ade'):
+                    fe_series = getattr(sim, 'pfe_full_echo_ratio_series', None)
+                    tp_series = getattr(sim, 'pfe_total_point_series', None)
+                    if fe_series and tp_series:
+                        fe_chunks = [
+                            float(np.mean(fe_series[i:i + chunk_size]))
+                            for i in range(0, chunk_size * n_chunks, chunk_size)
+                        ]
+                        tp_chunks = [
+                            float(np.mean(tp_series[i:i + chunk_size]))
+                            for i in range(0, chunk_size * n_chunks, chunk_size)
+                        ]
+                        print(f"      [FE_rt ] {' '.join(f'{m:6.3f}' for m in fe_chunks)}   (1000-tick 평균, Full Echo 발동 비율)")
+                        print(f"      [Point ] {' '.join(f'{m:6.2f}' for m in tp_chunks)}   (1000-tick 평균, 노드별 total_point 평균)")
 
             ax.plot(x_axis, adt, label=LABELS[algo], color=COLORS[algo])
 

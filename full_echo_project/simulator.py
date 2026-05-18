@@ -164,7 +164,16 @@ class Simulator:
         queue_len_series = []   # stat_interval 시점의 모든 노드 queue 길이 합
         t_est_series     = []   # stat_interval 시점의 네트워크 평균 T_est (finite 만)
         t_max_series     = []   # stat_interval 시점의 네트워크 평균 T_max (finite 만)
+        # PFE 진단 시계열 — stat_interval 윈도우 단위로 측정
+        # 다른 알고리즘에선 카운터/total_point 가 0 이므로 시계열도 모두 0 (main 에서 PFE 일 때만 출력)
+        pfe_total_point_series     = []  # 윈도우 종료 시점의 네트워크 평균 누적 포인트
+        pfe_full_echo_ratio_series = []  # 윈도우 동안 Full Echo 발동 / 라우팅 호출
         window_delivered = []
+
+        # 절단 전/후 분리 link_usage — self.link_usage(전체) 와 별개로 추적
+        # cut 없으면 pre 에만 누적되고 post 는 빈 dict 로 남음
+        link_usage_pre_cut  = {k: 0 for k in self.link_usage}
+        link_usage_post_cut = {k: 0 for k in self.link_usage}
 
         # 도달 여부 카운터 (selection bias 진단용)
         total_generated = 0
@@ -218,7 +227,18 @@ class Simulator:
                 else:
                     link = (i, next_hop) if (i, next_hop) in self.link_usage else (next_hop, i)
                     self.link_usage[link] += 1
+                    # 절단 전/후 분리 카운트 (cut_tick 도달 전엔 pre, 도달 후엔 post)
+                    if cut_tick is None or tick < cut_tick:
+                        link_usage_pre_cut[link] += 1
+                    else:
+                        link_usage_post_cut[link] += 1
                     self.nodes[next_hop].incoming.append(pkt)
+
+            # 2.5 T_max 가속 감쇠 — 모든 노드 매 tick (decay 비활성 노드는 즉시 no-op)
+            # 라우팅 안 한 노드의 T_max 도 부드럽게 낮춰야 high-watermark 문제 해소됨
+            # current_tick 전달: aqlrerm_c05_l0_tdec 처럼 특정 시점부터 활성화되는 변형 지원
+            for node in self.nodes:
+                node.tick_decay_tmax(tick)
 
             # 3. 새 패킷 생성 -> 이번 tick에는 incoming에만 넣고 끝
             n_packets = np.random.poisson(lam) # 포아송 분포에 따라 tick당 생성할 패킷 수 결정
@@ -251,6 +271,21 @@ class Simulator:
                 t_max_vals = [n.T_max for n in self.nodes if math.isfinite(n.T_max)]
                 t_est_series.append(float(np.mean(t_est_vals)) if t_est_vals else 0.0)
                 t_max_series.append(float(np.mean(t_max_vals)) if t_max_vals else 0.0)
+
+                # PFE 진단: 윈도우 동안 누적된 노드 카운터를 합산해 비율 계산 후 리셋
+                # - 평균 total_point: 모든 노드 포인트 잔고의 산술 평균 (PFE 외엔 항상 0)
+                # - full_echo_ratio: Full Echo 발동 횟수 합 / 라우팅 호출 횟수 합 (전체 네트워크)
+                tp_sum         = sum(n.total_point for n in self.nodes)
+                fe_count_sum   = sum(n.pfe_window_full_echo_count for n in self.nodes)
+                route_count_sum = sum(n.pfe_window_route_count    for n in self.nodes)
+                pfe_total_point_series.append(tp_sum / len(self.nodes) if self.nodes else 0.0)
+                pfe_full_echo_ratio_series.append(
+                    fe_count_sum / route_count_sum if route_count_sum > 0 else 0.0
+                )
+                # 다음 윈도우 비율 계산용 — 노드 카운터 리셋
+                for n in self.nodes:
+                    n.pfe_window_full_echo_count = 0
+                    n.pfe_window_route_count     = 0
 
                 # learned_aqrerm: 100 tick마다 reward로 train
                 # if self.controller is not None and self.controller.last_state is not None:
@@ -340,9 +375,15 @@ class Simulator:
         self.queue_len_series = queue_len_series
         self.t_est_series     = t_est_series
         self.t_max_series     = t_max_series
+        # PFE 진단 시계열 (PFE 외 알고리즘은 모두 0)
+        self.pfe_total_point_series     = pfe_total_point_series
+        self.pfe_full_echo_ratio_series = pfe_full_echo_ratio_series
         self.total_generated = total_generated
         self.total_delivered = total_delivered
         self.undelivered_count = sum(
             len(node.queue) + len(node.incoming) for node in self.nodes
         )
+        # 절단 전/후 분리 link_usage 노출 (cut 없으면 post 는 모두 0)
+        self.link_usage_pre_cut  = link_usage_pre_cut
+        self.link_usage_post_cut = link_usage_post_cut
         return adt_series

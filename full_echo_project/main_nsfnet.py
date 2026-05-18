@@ -19,16 +19,28 @@ L = 3
 
 BASE_PARAMS = {'eta': ETA, 'k': K, 'L': L}
 
-ALGORITHMS = ['aqrerm', 'aqlrerm', 'aqlrerm_all_no_mem', 'aqlrerm_l_train']
+ALGORITHMS = ['aqrerm', 'aqlrerm_low_c', 'aqlrerm_c03', 'aqlrerm',
+              'aqlrerm_c07', 'aqlrerm_high_c',
+              'aqlrerm_c05_l0']
 LABELS = {'q_routing': 'Q-routing', 'aqfe': 'AQFE', 'aqrerm': 'AQRERM',
-          'aqlrerm': 'AQLRERM',
+          'aqlrerm': 'AQLRERM_c=0.5',
+          'aqlrerm_low_c': 'AQLRERM_c=0.1',
+          'aqlrerm_c03':   'AQLRERM_c=0.3',
+          'aqlrerm_c07':   'AQLRERM_c=0.7',
+          'aqlrerm_high_c': 'AQLRERM_c=1.0',
+          'aqlrerm_c05_l0': 'AQLRERM_C=0.5_L=0',  # c=0.5, L=0 (memory_cut_tick 없으면 전 구간 L=0)
           'aqlrerm_7000_no_mem': 'AQLRERM_7000_NO_MEM',
           'aqlrerm_all_no_mem': 'AQLRERM_ALL_NO_MEM',
           'aqlrerm_l_train': 'AQLRERM_L_TRAIN',
           'aqlrerm_l_close': 'AQLRERM_L_CLOSE',
           'learned_aqrerm': 'Learned AQRERM', 'bandit_aqrerm': 'Bandit AQRERM'}
 COLORS = {'q_routing': 'blue', 'aqfe': 'orange', 'aqrerm': 'navy',
-          'aqlrerm': 'darkorange',
+          'aqlrerm':        'darkorange',         # c=0.5 (기본)
+          'aqlrerm_low_c':  'gold',               # c=0.1
+          'aqlrerm_c03':    'chocolate',          # c=0.3 (갈색 — darkorange 와 명확히 구분)
+          'aqlrerm_c07':    'magenta',            # c=0.7 (밝은 분홍 — teal 과 명확히 구분)
+          'aqlrerm_high_c': 'darkmagenta',        # c=1.0
+          'aqlrerm_c05_l0': 'crimson',            # c=0.5 + L=0
           'aqlrerm_7000_no_mem': 'cyan',
           'aqlrerm_all_no_mem': 'teal',
           'aqlrerm_l_train': 'black',
@@ -42,11 +54,11 @@ C_VALUES = [0.5]
 MD_PATH = 'result_nsfnet.md'
 
 EXPERIMENTS = [
-    {'lam': 1,   'total_ticks': 5000,  'title': 'λ=1'},
+    {'lam': 2.5,   'total_ticks': 14000,  'title': 'λ=2.5'},
     # {'lam': 2,   'total_ticks': 10000, 'title': 'λ=2'},
-    {'lam': 2.5, 'total_ticks': 10000, 'title': 'λ=2.5'},
-    {'lam': 3,   'total_ticks': 14000, 'title': 'λ=3'},
-    {'lam': 3.8, 'total_ticks': 14000, 'title': 'λ=3.8'},
+    {'lam': 3, 'total_ticks': 14000, 'title': 'λ=3'},
+    {'lam': 4,   'total_ticks': 14000, 'title': 'λ=4'},
+    {'lam': 5, 'total_ticks': 14000, 'title': 'λ=5'},
 ]
 
 
@@ -56,7 +68,7 @@ EXPERIMENTS = [
 def run_one_c(c, md_file):
     params = {**BASE_PARAMS, 'c': c}
 
-    fig, axes = plt.subplots(1, 4, figsize=(24, 5))
+    fig, axes = plt.subplots(1, 4, figsize=(30, 8))
     fig.suptitle(f"NSFNET (c={c}, L={L})")
 
     md_file.write(f"## c = {c}\n\n")
@@ -84,6 +96,23 @@ def run_one_c(c, md_file):
             print(f"    {LABELS[algo]:18s} generated={gen:6d}  delivered={dlv:6d}  "
                   f"undelivered={und:6d}  delivery_rate={rate:5.1f}%")
             md_file.write(f"| {LABELS[algo]} | {gen} | {dlv} | {und} | {rate:.1f}% |\n")
+
+            # ---- T_est / T_max 1000-tick 간격 평균 (시간 흐름 진단) ----
+            t_est_series = getattr(sim, 't_est_series', None)
+            t_max_series = getattr(sim, 't_max_series', None)
+            if t_est_series and t_max_series:
+                n_chunks   = max(1, total_ticks // 1000)
+                chunk_size = max(1, len(t_est_series) // n_chunks)
+                t_est_chunks = [
+                    float(np.mean(t_est_series[i:i + chunk_size]))
+                    for i in range(0, chunk_size * n_chunks, chunk_size)
+                ]
+                t_max_chunks = [
+                    float(np.mean(t_max_series[i:i + chunk_size]))
+                    for i in range(0, chunk_size * n_chunks, chunk_size)
+                ]
+                print(f"      [T_est ] {' '.join(f'{m:6.2f}' for m in t_est_chunks)}   (1000-tick 평균, 네트워크 avg)")
+                print(f"      [T_max ] {' '.join(f'{m:6.2f}' for m in t_max_chunks)}   (1000-tick 평균, 네트워크 avg)")
 
             ax.plot(x_axis, adt, label=LABELS[algo], color=COLORS[algo])
 
