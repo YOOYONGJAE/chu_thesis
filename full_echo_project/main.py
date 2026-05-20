@@ -31,6 +31,7 @@ ALGORITHMS = [
     # 'pfe_c03',
     'aqlrerm_c_ade',
     'pfe_c_ade',
+    'pfe_c_pre_echo',
     ]
 LABELS = {'q_routing': 'Q-routing', 'aqfe': 'AQFE', 'aqrerm': 'AQRERM',
           'aqlrerm': 'AQLRERM_c=0.5',
@@ -49,6 +50,7 @@ LABELS = {'q_routing': 'Q-routing', 'aqfe': 'AQFE', 'aqrerm': 'AQRERM',
           'pfe_c03':  'PFE_c=0.3',
           'aqlrerm_c_ade': 'AQLRERM_c=0.5_AdE',
           'pfe_c_ade':     'PFE_c=0.5_AdE',
+          'pfe_c_pre_echo': 'PFE_c=0.5_PreEcho',
           'learned_aqrerm': 'Learned AQRERM', 'bandit_aqrerm': 'Bandit AQRERM'}
 COLORS = {'q_routing': 'blue', 'aqfe': 'orange',
           # === 활성화 변형: family 별 hue 분리, c 값 따라 톤 차이 ===
@@ -59,6 +61,7 @@ COLORS = {'q_routing': 'blue', 'aqfe': 'orange',
           'pfe_c':          'red',                # PFE family (빨강) — c=0.5
           'pfe_c03':        'lightcoral',         # PFE family — c=0.3 (밝은 빨강)
           'pfe_c_ade':      'magenta',            # PFE + AdE — family 와 구분
+          'pfe_c_pre_echo': 'purple',             # PFE + Pre-echo — 보라 (magenta 와 다른 톤)
 
           # === 비활성화 변형: 기존 매핑 유지 ===
           'aqlrerm_tdec':   'skyblue',
@@ -143,7 +146,7 @@ def run_one_c(c, md_file):
                 # ---- PFE 진단: Full Echo 발동 비율, 평균 누적 포인트 (PFE 일 때만) ----
                 # ratio: 윈도우 동안 (Full Echo 실행 라우팅 / 전체 라우팅 호출) — 0~1
                 # total_point: stat_interval 시점의 네트워크 평균 포인트 잔고
-                if algo in ('pfe', 'pfe_tdec', 'pfe_c', 'pfe_c03', 'pfe_c_ade'):
+                if algo in ('pfe', 'pfe_tdec', 'pfe_c', 'pfe_c03', 'pfe_c_ade', 'pfe_c_pre_echo'):
                     fe_series = getattr(sim, 'pfe_full_echo_ratio_series', None)
                     tp_series = getattr(sim, 'pfe_total_point_series', None)
                     if fe_series and tp_series:

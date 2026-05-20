@@ -226,6 +226,14 @@ class Node:
             # PFE_c + Advantage-weighted eta2 (AdE)
             # Full Echo 직후 fresh Score 차이로 비-y_star 학습률 차등 적용
             return self._route_pfe_c_ade(packet, current_tick, all_nodes)
+        elif self.algorithm == 'pfe_c_pre_echo':
+            # PFE_c_AdE 의 변형 — echo 와 노드 선정의 순서를 뒤집음
+            # 포인트 충분 시: Full Echo 먼저 → fresh Score 로 y_star 선정 → eta/eta2 학습
+            # 포인트 부족 시: stale 캐시로 y_star 선정 → y_star 만 update
+            return self._route_pfe_c_pre_echo(packet, current_tick, all_nodes)
+        elif self.algorithm == 'pfe_c_pre_echo_l0':
+            # PFE_c_pre_echo + memory_cut_tick (보통 7000) 이후 L=0 강제 (link_cut 시나리오용)
+            return self._route_pfe_c_pre_echo_l0(packet, current_tick, all_nodes)
         elif self.algorithm == 'pfe_c_ade_l0':
             # PFE_c_AdE + memory_cut_tick (보통 7000) 이후 L=0 강제
             # link_cut 시나리오용 — c 는 params['c'] (main_link_cut.py 에서 0.5) 그대로
@@ -686,6 +694,133 @@ class Node:
             packet.route_memory = new_memory
 
         return y_star
+
+    # -------------------------------------------------------------------------
+    # PFE_c_pre_echo — echo 와 노드 선정의 순서를 뒤집은 변형.
+    #
+    # 기존 PFE_c_AdE 와의 차이:
+    #   - 선정 → echo → 학습 (기존)
+    #   - echo → 선정 → 학습 (이 변형)
+    #
+    # 동작:
+    #   포인트 적립 / 사용 방식은 기존 PFE 와 동일.
+    #   total_point >= c_pt 이면:
+    #     1) Full Echo 발동 → 모든 이웃의 fresh t_n + queue 수집
+    #     2) Score = t_n + c_q * queue_n 으로 y_star 선정 (Route Memory visited 필터 적용)
+    #     3) y_star: eta 로 update, 그 외 이웃: eta2 = R_x * k 로 균등 update
+    #   포인트 부족 시 (Q-routing 모드):
+    #     1) echo 미수행
+    #     2) stale 캐시 (Q + c_q * last_known_queue) 로 y_star 선정
+    #     3) y_star 만 update (PFE_c_AdE 의 Q-routing 모드와 동일)
+    #
+    # 주의: Pre-echo 모드에서는 y_star 가 fresh Score 기준 argmin 이므로
+    #       어떤 비-y_star 이웃도 Score 가 y_star 보다 작을 수 없음 → Adv 항상 0.
+    #       따라서 AdE 식 학습률 차등이 의미 없어지고 eta2 균등 적용.
+    # -------------------------------------------------------------------------
+    def _route_pfe_c_pre_echo(self, packet, current_tick, all_nodes):
+        self.pfe_window_route_count += 1
+
+        dst   = packet.dst
+        eta   = self.params['eta']
+        k     = self.params['k']
+        gr    = self.params.get('pfe_gr', 0.1)
+        b_max = self.params.get('pfe_b_max', 1.0)
+        L     = self.params['L']
+        c_q   = self.params['c']
+
+        self.update_T_est()
+
+        # PFE 동적 가격 (Full Echo 1 회 비용)
+        sale_pt = 1.0 - (self.T_est / self.T_max) if self.T_max > 0 else 1.0
+        if sale_pt == 0:
+            sale_pt = 0.1
+        c_pt = self.params.get('pfe_c', sale_pt)
+
+        # 포인트 적립 (R_x 무관, 상수 gr)
+        R_x = self.T_est / self.T_max if self.T_max > 0 else 0.0
+        self.total_point = min(b_max, self.total_point + gr)
+
+        q = current_tick - packet.queue_entry_tick
+        s = 1
+        eta2 = R_x * k
+
+        # Route Memory 필터
+        visited = set(packet.route_memory)
+        candidates = [n for n in self.neighbors if n not in visited]
+        if not candidates:
+            candidates = self.neighbors
+
+        if self.total_point >= c_pt:
+            # === Pre-echo 모드 ===
+            self.total_point -= c_pt
+            self.pfe_window_full_echo_count += 1
+
+            # 1차: 모든 이웃의 fresh t_n + queue 수집
+            t_values = {n: all_nodes[n].best_estimate(dst, exclude_node=self.id)
+                        for n in self.neighbors}
+            for n in self.neighbors:
+                self.last_known_queue[n] = len(all_nodes[n].queue)
+
+            # 2차: fresh Score = t_n + c_q * queue_n 으로 y_star 선정
+            def _score(n):
+                if math.isfinite(t_values[n]):
+                    return t_values[n] + c_q * self.last_known_queue[n]
+                else:
+                    return float('inf')
+
+            y_star = min(candidates, key=_score)
+
+            # 3차: y_star eta, 비-y_star eta2 균등 update
+            self.Q[dst][y_star] += eta * (
+                q + s + t_values[y_star] - self.Q[dst][y_star]
+            )
+            for n in self.neighbors:
+                if n == y_star:
+                    continue
+                if math.isfinite(t_values[n]):
+                    self.Q[dst][n] += eta2 * (
+                        q + s + t_values[n] - self.Q[dst][n]
+                    )
+        else:
+            # === Q-routing 모드 (포인트 부족) ===
+            # stale 캐시 기반 선정
+            y_star = min(
+                candidates,
+                key=lambda n: self.Q[dst][n] + c_q * self.last_known_queue[n]
+            )
+            # y_star 만 update
+            t = all_nodes[y_star].best_estimate(dst, exclude_node=self.id)
+            self.last_known_queue[y_star] = len(all_nodes[y_star].queue)
+            self.Q[dst][y_star] += eta * (
+                q + s + t - self.Q[dst][y_star]
+            )
+
+        # Route Memory 갱신
+        if L == 0:
+            packet.route_memory = []
+        else:
+            new_memory = packet.route_memory + [self.id]
+            if len(new_memory) > L:
+                new_memory = new_memory[-L:]
+            packet.route_memory = new_memory
+
+        return y_star
+
+    # -------------------------------------------------------------------------
+    # PFE_c_pre_echo_L0 — PFE_c_pre_echo 본체 + memory_cut_tick (보통 7000) 이후 L=0 강제.
+    # link_cut 시나리오용. c 는 params['c'] 그대로 사용.
+    # -------------------------------------------------------------------------
+    def _route_pfe_c_pre_echo_l0(self, packet, current_tick, all_nodes):
+        cut_tick = self.params.get('memory_cut_tick', 0)
+        if current_tick >= cut_tick:
+            original_L = self.params['L']
+            self.params['L'] = 0
+            try:
+                return self._route_pfe_c_pre_echo(packet, current_tick, all_nodes)
+            finally:
+                self.params['L'] = original_L
+        else:
+            return self._route_pfe_c_pre_echo(packet, current_tick, all_nodes)
 
     # -------------------------------------------------------------------------
     # PFE_c_AdE_L0 — PFE_c_AdE 본체 + memory_cut_tick (보통 7000) 이후 L=0 강제.

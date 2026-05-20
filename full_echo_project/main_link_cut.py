@@ -23,6 +23,8 @@ ALGORITHMS = ['aqrerm',
             #   'pfe_c01_ade_l0',      # L=0 + c=0.1
               'pfe_c_ade_l0',        # L=0 + c=0.5 (params['c'] 그대로)
             #   'pfe_c10_ade_l0',      # L=0 + c=1.0
+              'pfe_c_pre_echo',      # echo → 선정 → 학습 순서 (L=0 전환 없음)
+              'pfe_c_pre_echo_l0',   # Pre-echo + 7000 이후 L=0 강제
               ]
 LABELS = {'q_routing': 'Q-routing', 'aqfe': 'AQFE', 'aqrerm': 'AQRERM',
           'aqrerm_l0': 'AQRERM_L=0',
@@ -44,6 +46,8 @@ LABELS = {'q_routing': 'Q-routing', 'aqfe': 'AQFE', 'aqrerm': 'AQRERM',
           'pfe_c_ade_l0':   'PFE_c=0.5_L=0',
           'pfe_c10_ade_l0': 'PFE_c=1.0_L=0',
           'aqlrerm_c_ade_l0': 'AQLRERM_c=0.5_L=0_AdE',
+          'pfe_c_pre_echo':   'PFE_c=0.5_PreEcho',
+          'pfe_c_pre_echo_l0': 'PFE_c=0.5_L=0_PreEcho',
           'aqlrerm_all_no_mem': 'AQLRERM_ALL_L=0',
           'aqlrerm_7000_no_c':  'AQLRERM_C=0_L=0',
         #   'aqlrerm_7000_one_c': 'AQLRERM_7000_C=1_L=0',
@@ -56,6 +60,8 @@ COLORS = {'q_routing': 'blue', 'aqfe': 'orange',
           'aqrerm_l0':      '#D55E00',            # 주홍 (AQRERM family L=0 변형)
           'aqlrerm_c05_l0': '#E69F00',            # 오렌지
           'aqlrerm_c_ade_l0': "#0044FF",          # 청록 (AQLRERM_c=0.5_L=0_AdE)
+          'pfe_c_pre_echo':   '#F0E442',          # 노랑 (PFE Pre-echo, L=0 전환 없음)
+          'pfe_c_pre_echo_l0': '#D55E00',         # 주홍 (PFE Pre-echo + L=0 at 7000)
           'pfe_c_ade':      '#56B4E9',            # 하늘색 (L=0 전환 없음)
           'pfe_c01_ade_l0': '#F0E442',            # 노랑 (c=0.1, 옅은 톤 느낌)
           'pfe_c_ade_l0':   "#CFD66B",            # 분홍보라 (c=0.5, 기준)
