@@ -104,6 +104,23 @@ class Node:
         self.pfe_window_full_echo_count = 0
         self.pfe_window_route_count     = 0
 
+        # AdE 진단 카운터 — Adv > 0 이벤트 (= fresh 정보로 y* 보다 더 좋은 이웃 발견) 추적
+        # 라우팅 한 번 안에서 최선의 비-y_star (= 가장 작은 score_n) 만 기록
+        self.pfe_window_adv_event_count  = 0   # Adv > 0 발생 라우팅 수
+        self.pfe_window_adv_sum          = 0.0 # max Adv (= score_y - 최선 score_n) 누적합
+        self.pfe_window_score_y_sum      = 0.0 # Adv 이벤트 시 score_y_star 누적합
+        self.pfe_window_score_n_best_sum = 0.0 # Adv 이벤트 시 최선 score_n 누적합
+
+        # AdE eta_n 통계 — 비-y_star 학습률 분포 (cap 도달 비율 / 평균 / 분산용 sum)
+        self.pfe_window_eta_n_count      = 0   # eta_n 적용 횟수 (= 비-y_star update 수)
+        self.pfe_window_eta_n_sum        = 0.0
+        self.pfe_window_eta_n_sq_sum     = 0.0 # variance 계산용 (E[X^2])
+        self.pfe_window_eta_n_clip_count = 0   # eta_n == eta cap 도달 횟수
+
+        # y_star switching — 같은 dst 에 대한 y_star 가 이전 라우팅과 달라지면 카운트
+        self.prev_y_star            = {}       # dst -> 직전 y_star
+        self.pfe_window_switch_count = 0
+
     # -------------------------------------------------------------------------
     # T_est 업데이트 (AQFE / AQRERM)
     # T_est = 모든 목적지에 대해 min_y Q[d][y] 의 평균 (AQRERM 정의)
@@ -187,6 +204,9 @@ class Node:
             # AQLRERM_c + Advantage-weighted eta2 (AdE)
             # echo_set 안의 비-y_star 만 차등 학습률, echo_set 밖은 기존 동작
             return self._route_aqlrerm_c_ade(packet, current_tick, all_nodes)
+        elif self.algorithm == 'aqlrerm_c_ade_l0':
+            # AQLRERM_c_AdE + memory_cut_tick (보통 7000) 이후 L=0 강제 (link_cut 시나리오용)
+            return self._route_aqlrerm_c_ade_l0(packet, current_tick, all_nodes)
         elif self.algorithm == 'pfe_tdec':
             # PFE + T_max 가속 감쇠 — 라우팅 로직은 동일, T_max 관리만 다름
             return self._route_pfe(packet, current_tick, all_nodes)
@@ -278,7 +298,7 @@ class Node:
         q = current_tick - packet.queue_entry_tick
         s = 1
 
-        eta2 = (self.T_est / self.T_max) * eta * k if self.T_max > 0 else 0.0
+        eta2 = (self.T_est / self.T_max) * k if self.T_max > 0 else 0.0
 
         # 선택된 이웃: eta로 업데이트
         self.Q[dst][y_star] += eta * (q + s + t_values[y_star] - self.Q[dst][y_star])
@@ -302,7 +322,7 @@ class Node:
     # 즉 echo 선택지가 2가지 (all-or-nothing), 확률적 부분 echo 없음.
     #
     # y* 는 단순 argmin Q (큐 페널티 X, route memory X) — 사용자 지정.
-    # eta2 는 AQFE 그대로 (T_est/T_max) * eta * k.
+    # eta2 는 AQRERM 논문식 (T_est/T_max) * k (k=0.5).
     # gr / B_max / C 는 params 에서 읽어 (없으면 기본값) — main 스크립트 튜닝 가능.
     # -------------------------------------------------------------------------
     def _route_pfe(self, packet, current_tick, all_nodes):
@@ -370,7 +390,7 @@ class Node:
             self.pfe_window_full_echo_count += 1
 
             # Full Echo 에서 선택되지 않은 이웃을 갱신할 때 쓰는 보조 학습률
-            eta2 = R_x * eta * k
+            eta2 = R_x * k
 
             # 모든 이웃에게 "너를 통해 dst 까지 가면 남은 시간이 얼마냐?" 를 물어봄.
             # exclude_node=self.id 로 자기 자신은 답에서 빼게 함 (route memory 의 두 번째 효과).
@@ -459,7 +479,7 @@ class Node:
         if self.total_point >= c_pt:
             self.total_point -= c_pt
             self.pfe_window_full_echo_count += 1
-            eta2 = R_x * eta * k
+            eta2 = R_x * k
 
             t_values = {n: all_nodes[n].best_estimate(dst, exclude_node=self.id)
                         for n in self.neighbors}
@@ -557,8 +577,8 @@ class Node:
         c_q   = self.params['c']
 
         # AdE 파라미터
-        alpha     = self.params.get('ade_alpha',     0.1)
-        eta_floor = self.params.get('ade_eta_floor', 0.01)
+        alpha     = self.params.get('ade_alpha',     100)
+        # eta_floor = self.params.get('ade_eta_floor', 0.01)
 
         self.update_T_est()
 
@@ -582,16 +602,23 @@ class Node:
             key=lambda n: self.Q[dst][n] + c_q * self.last_known_queue[n]
         )
 
+        # y_star switching 추적 — 같은 dst 에 대한 이전 y_star 와 비교
+        prev = self.prev_y_star.get(dst)
+        if prev is not None and prev != y_star:
+            self.pfe_window_switch_count += 1
+        self.prev_y_star[dst] = y_star
+
         q = current_tick - packet.queue_entry_tick
         s = 1
 
+        # Full Echo 발동 시: fresh t_n 수집 → y_star 대비 다른 이웃의 상대적 성능 평가 → AdE로 eta2 차등 적용
         if self.total_point >= c_pt:
             self.total_point -= c_pt
             self.pfe_window_full_echo_count += 1
-            eta2_base = R_x * eta * k
+            eta2_base = R_x * k
 
-            # 1차 패스: fresh t_n 수집 + queue 캐시 갱신
-            t_values = {n: all_nodes[n].best_estimate(dst, exclude_node=self.id)
+            # t_values : 모든 이웃의 dst 까지 예상 시간 (자기 자신 제외, route memory 효과)
+            t_values = {n: all_nodes[n].best_estimate(dst, exclude_node=self.id) 
                         for n in self.neighbors}
             for n in self.neighbors:
                 self.last_known_queue[n] = len(all_nodes[n].queue)
@@ -607,18 +634,41 @@ class Node:
             # 비-y_star: baseline 균등 학습 + Adv 양수일 때만 추가 boost
             # η₂,n = min(η, η₂_base + α · max(0, Score_y* − Score_n))
             # → Adv ≤ 0 이면 그대로 eta2_base (= 기존 PFE_c 동작), Adv > 0 만 boost
+            best_adv      = 0.0
+            best_score_n  = None
             for n in self.neighbors:
                 if n == y_star:
                     continue
                 if math.isfinite(t_values[n]):
                     score_n = t_values[n] + c_q * self.last_known_queue[n]
-                    adv = max(0.0, score_y_star - score_n)  # 양수만
-                    eta_n = min(eta, eta2_base + alpha * adv)
+                    # adv = max(0.0, (score_y_star - score_n) / (score_y_star + score_n))
+                    adv = max(0.0, score_y_star - score_n)  # 절대 차이로도 시도해봄 (scale 민감도 낮추려고)
+                    if adv > best_adv:
+                        best_adv     = adv
+                        best_score_n = score_n
+                    # eta_n = min(eta, eta2_base + self.T_est/self.T_max * adv * 100)
+                    # eta_n = min(eta, eta2_base + self.T_max * adv)
+                    eta_n = min(eta, eta2_base + self.T_est * adv)
+                    # eta_n = min(eta, eta2_base + alpha * adv)
+                    # eta_n = min(eta, eta2_base + adv)
                 else:
                     eta_n = eta2_base  # 도달 불가 이웃은 baseline 만
+                # eta_n 통계 — clip rate / 평균 / 분산
+                self.pfe_window_eta_n_count    += 1
+                self.pfe_window_eta_n_sum      += eta_n
+                self.pfe_window_eta_n_sq_sum   += eta_n * eta_n
+                if eta_n >= eta - 1e-9:
+                    self.pfe_window_eta_n_clip_count += 1
                 self.Q[dst][n] += eta_n * (
                     q + s + t_values[n] - self.Q[dst][n]
                 )
+
+            # AdE 진단 — 이번 라우팅에서 Adv > 0 이 한 번이라도 있었으면 기록
+            if best_score_n is not None:
+                self.pfe_window_adv_event_count  += 1
+                self.pfe_window_adv_sum          += best_adv
+                self.pfe_window_score_y_sum      += score_y_star
+                self.pfe_window_score_n_best_sum += best_score_n
         else:
             # Q-routing 모드: echo 정보 없음 — y_star 만 update
             t = all_nodes[y_star].best_estimate(dst, exclude_node=self.id)
@@ -681,7 +731,7 @@ class Node:
         q = current_tick - packet.queue_entry_tick
         s = 1
 
-        eta2 = p * eta * k
+        eta2 = p * k
 
         # y*는 항상 echo, 나머지는 확률 p로 echo
         echo_set = {y_star}
@@ -742,7 +792,7 @@ class Node:
         q = current_tick - packet.queue_entry_tick
         s = 1
 
-        eta2 = p * eta * k
+        eta2 = p * k
 
         echo_set = {y_star}
         for n in self.neighbors:
@@ -786,7 +836,7 @@ class Node:
         q = current_tick - packet.queue_entry_tick
         s = 1
 
-        eta2 = p * eta * k
+        eta2 = p * k
 
         echo_set = {y_star}
         for n in self.neighbors:
@@ -831,7 +881,7 @@ class Node:
         c = self.params['c']
 
         # AdE 파라미터
-        alpha     = self.params.get('ade_alpha',     0.05)
+        alpha     = self.params.get('ade_alpha',     0.5)
         eta_floor = self.params.get('ade_eta_floor', 0.01)
 
         self.update_T_est()
@@ -849,7 +899,7 @@ class Node:
         q = current_tick - packet.queue_entry_tick
         s = 1
 
-        eta2_base = p * eta * k
+        eta2_base = p * k
 
         # echo_set 확률적 선택 (기존 AQLRERM 그대로)
         echo_set = {y_star}
@@ -878,8 +928,13 @@ class Node:
                 # η₂,n = min(η, η₂_base + α · max(0, Score_y* − Score_n))
                 if math.isfinite(t_values[n]):
                     score_n = t_values[n] + c * self.last_known_queue[n]
-                    adv = max(0.0, score_y_star - score_n)
-                    eta_n = min(eta, eta2_base + alpha * adv)
+                    # adv = max(0.0, (score_y_star - score_n) / (score_y_star + score_n))
+                    adv = max(0.0, score_y_star - score_n)  # 절대 차이로도 시도해봄 (scale 민감도 낮추려고)
+                    # eta_n = min(eta, eta2_base + self.T_est/self.T_max * adv * 100)
+                    # eta_n = min(eta, eta2_base + self.T_max * adv)
+                    eta_n = min(eta, eta2_base + self.T_est * adv)
+                    # eta_n = min(eta, eta2_base + alpha * adv)
+                    # eta_n = min(eta, eta2_base + adv)
                 else:
                     eta_n = eta2_base
                 self.Q[dst][n] += eta_n * (
@@ -896,6 +951,22 @@ class Node:
             packet.route_memory = new_memory
 
         return y_star
+
+    # -------------------------------------------------------------------------
+    # AQLRERM_c_AdE_L0 — AQLRERM_c_AdE 본체 + memory_cut_tick (보통 7000) 이후 L=0 강제.
+    # link_cut 시나리오용 — c 는 params['c'] (main_link_cut.py 에서 0.5) 그대로.
+    # -------------------------------------------------------------------------
+    def _route_aqlrerm_c_ade_l0(self, packet, current_tick, all_nodes):
+        cut_tick = self.params.get('memory_cut_tick', 0)
+        if current_tick >= cut_tick:
+            original_L = self.params['L']
+            self.params['L'] = 0
+            try:
+                return self._route_aqlrerm_c_ade(packet, current_tick, all_nodes)
+            finally:
+                self.params['L'] = original_L
+        else:
+            return self._route_aqlrerm_c_ade(packet, current_tick, all_nodes)
 
     # -------------------------------------------------------------------------
     # AQLRERM_no_mem: 디버깅용
@@ -932,7 +1003,7 @@ class Node:
         q = current_tick - packet.queue_entry_tick
         s = 1
 
-        eta2 = p * eta * k
+        eta2 = p * k
 
         echo_set = {y_star}
         for n in self.neighbors:
@@ -985,7 +1056,7 @@ class Node:
         q = current_tick - packet.queue_entry_tick
         s = 1
 
-        eta2 = p * eta * k
+        eta2 = p * k
 
         echo_set = {y_star}
         for n in self.neighbors:
@@ -1151,7 +1222,7 @@ class Node:
         q = current_tick - packet.queue_entry_tick
         s = 1
 
-        eta2 = p * eta * k
+        eta2 = p * k
 
         echo_set = {y_star}
         for n in self.neighbors:
@@ -1259,7 +1330,7 @@ class Node:
         q = current_tick - packet.queue_entry_tick
         s = 1
 
-        eta2 = p * eta * k
+        eta2 = p * k
 
         # 선정된 이웃 y*는 항상 echo, 나머지는 확률 p로 echo
         echo_set = {y_star}

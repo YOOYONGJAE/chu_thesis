@@ -8,14 +8,15 @@ from simulator import Simulator
 from echo_controller import LTrainController
 from topology_grid import NUM_NODES as G_N, ADJACENCY as G_A
 
-SEED = 800
-BASE_PARAMS = {'eta': 0.9, 'k': 0.556, 'L': 3}
+SEED = 500
+BASE_PARAMS = {'eta': 0.9, 'k': 0.5, 'L': 3}
 TOPO = {'num_nodes': G_N, 'adjacency': G_A}
 
 ALGORITHMS = ['aqrerm',
-              'aqrerm_l0',           # AQRERM + 7000 이후 L=0
+            #   'aqrerm_l0',           # AQRERM + 7000 이후 L=0
             #   'aqlrerm_c03_l0',
-            #   'aqlrerm_c05_l0',
+              'aqlrerm_c05_l0',
+              'aqlrerm_c_ade_l0',    # AQLRERM_c=0.5_AdE + 7000 이후 L=0
             #   'pfe_c05_l0',
               # 'pfe_c03_l0',
               'pfe_c_ade',           # L=0 전환 없음 (L=3 유지)
@@ -42,6 +43,7 @@ LABELS = {'q_routing': 'Q-routing', 'aqfe': 'AQFE', 'aqrerm': 'AQRERM',
           'pfe_c01_ade_l0': 'PFE_c=0.1_L=0',
           'pfe_c_ade_l0':   'PFE_c=0.5_L=0',
           'pfe_c10_ade_l0': 'PFE_c=1.0_L=0',
+          'aqlrerm_c_ade_l0': 'AQLRERM_c=0.5_L=0_AdE',
           'aqlrerm_all_no_mem': 'AQLRERM_ALL_L=0',
           'aqlrerm_7000_no_c':  'AQLRERM_C=0_L=0',
         #   'aqlrerm_7000_one_c': 'AQLRERM_7000_C=1_L=0',
@@ -53,9 +55,10 @@ COLORS = {'q_routing': 'blue', 'aqfe': 'orange',
           'aqrerm':         'black',              # 기준선 (최대 대비)
           'aqrerm_l0':      '#D55E00',            # 주홍 (AQRERM family L=0 변형)
           'aqlrerm_c05_l0': '#E69F00',            # 오렌지
+          'aqlrerm_c_ade_l0': "#0044FF",          # 청록 (AQLRERM_c=0.5_L=0_AdE)
           'pfe_c_ade':      '#56B4E9',            # 하늘색 (L=0 전환 없음)
           'pfe_c01_ade_l0': '#F0E442',            # 노랑 (c=0.1, 옅은 톤 느낌)
-          'pfe_c_ade_l0':   '#CC79A7',            # 분홍보라 (c=0.5, 기준)
+          'pfe_c_ade_l0':   "#CFD66B",            # 분홍보라 (c=0.5, 기준)
           'pfe_c10_ade_l0': '#0072B2',            # 파랑 (c=1.0, 비활성)
 
           # === 비활성 변형: 기존 매핑 유지 ===
@@ -207,7 +210,8 @@ def run_one_c(c, md_file):
                         print(f"      [Lw time] {chunks_w_str}   (시간순 10등분 평균, per-window)")
 
                 x_axis = np.arange(1, len(adt) + 1) * STAT_INTERVAL
-                ax.plot(x_axis, adt, label=LABELS[algo], color=COLORS[algo], linestyle='--')
+                # ax.plot(x_axis, adt, label=LABELS[algo], color=COLORS[algo], linestyle='--')
+                ax.plot(x_axis, adt, label=LABELS[algo], color=COLORS[algo])
 
             md_file.write("\n")
             ax.axvline(x=CUT_TICK, color='red', linestyle='--', linewidth=1.5, label='Link cut')

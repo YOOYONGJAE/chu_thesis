@@ -6,7 +6,8 @@ import matplotlib.pyplot as plt
 from simulator import Simulator
 from topology_grid import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACENCY
 
-SEED = 800
+SEED = 100
+
 
 TOPOLOGY_GRID = {'num_nodes': GRID_NUM_NODES, 'adjacency': GRID_ADJACENCY}
 
@@ -14,9 +15,8 @@ TOPOLOGY_GRID = {'num_nodes': GRID_NUM_NODES, 'adjacency': GRID_ADJACENCY}
 # 파라미터 설정 (AQRERM 논문 기준)
 # -------------------------------------------------------------------------
 ETA = 0.9
-
-K = 0.5 / ETA       # eta*k = 0.5 이므로 k = 0.5/0.9 ≈ 0.556 
-L = 3
+K   = 0.5           # AQRERM 논문 기준 — eta2 = k · R_x, k=0.5
+L   = 3
 
 BASE_PARAMS = {'eta': ETA, 'k': K, 'L': L}
 
@@ -27,9 +27,9 @@ ALGORITHMS = [
     # 'aqlrerm_tdec',
     # 'pfe',
     # 'pfe_tdec',
-    # 'pfe_c',
+    'pfe_c',
     # 'pfe_c03',
-    # 'aqlrerm_c_ade',
+    'aqlrerm_c_ade',
     'pfe_c_ade',
     ]
 LABELS = {'q_routing': 'Q-routing', 'aqfe': 'AQFE', 'aqrerm': 'AQRERM',

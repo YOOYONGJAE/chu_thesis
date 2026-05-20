@@ -168,6 +168,16 @@ class Simulator:
         # 다른 알고리즘에선 카운터/total_point 가 0 이므로 시계열도 모두 0 (main 에서 PFE 일 때만 출력)
         pfe_total_point_series     = []  # 윈도우 종료 시점의 네트워크 평균 누적 포인트
         pfe_full_echo_ratio_series = []  # 윈도우 동안 Full Echo 발동 / 라우팅 호출
+        # AdE 진단 시계열 — 윈도우별 평균 (Adv 이벤트가 있을 때만 의미 있음)
+        pfe_adv_event_ratio_series = []  # Adv>0 이벤트 / 전체 라우팅 (= Full Echo 중 advantageous 발견 비율)
+        pfe_adv_avg_series         = []  # 그 이벤트들의 평균 max Adv
+        pfe_score_y_avg_series     = []  # 그 이벤트들의 평균 Score_y_star
+        pfe_score_n_avg_series     = []  # 그 이벤트들의 평균 최선 Score_n
+        # AdE eta_n 분포 진단
+        pfe_eta_n_clip_rate_series = []  # eta_n == eta cap 도달 비율
+        pfe_eta_n_avg_series       = []  # eta_n 평균
+        pfe_eta_n_var_series       = []  # eta_n 분산
+        pfe_switch_rate_series     = []  # y_star 변경 비율 (= switch / route_count)
         window_delivered = []
 
         # 절단 전/후 분리 link_usage — self.link_usage(전체) 와 별개로 추적
@@ -282,10 +292,57 @@ class Simulator:
                 pfe_full_echo_ratio_series.append(
                     fe_count_sum / route_count_sum if route_count_sum > 0 else 0.0
                 )
+                # AdE 진단 집계 — 윈도우 동안 모든 노드의 Adv 이벤트 누적
+                adv_event_sum   = sum(n.pfe_window_adv_event_count  for n in self.nodes)
+                adv_sum_total   = sum(n.pfe_window_adv_sum          for n in self.nodes)
+                score_y_total   = sum(n.pfe_window_score_y_sum      for n in self.nodes)
+                score_n_total   = sum(n.pfe_window_score_n_best_sum for n in self.nodes)
+                pfe_adv_event_ratio_series.append(
+                    adv_event_sum / route_count_sum if route_count_sum > 0 else 0.0
+                )
+                pfe_adv_avg_series.append(
+                    adv_sum_total / adv_event_sum if adv_event_sum > 0 else 0.0
+                )
+                pfe_score_y_avg_series.append(
+                    score_y_total / adv_event_sum if adv_event_sum > 0 else 0.0
+                )
+                pfe_score_n_avg_series.append(
+                    score_n_total / adv_event_sum if adv_event_sum > 0 else 0.0
+                )
+
+                # eta_n 분포 집계
+                eta_n_cnt   = sum(n.pfe_window_eta_n_count      for n in self.nodes)
+                eta_n_sum   = sum(n.pfe_window_eta_n_sum        for n in self.nodes)
+                eta_n_sq    = sum(n.pfe_window_eta_n_sq_sum     for n in self.nodes)
+                eta_n_clip  = sum(n.pfe_window_eta_n_clip_count for n in self.nodes)
+                switch_cnt  = sum(n.pfe_window_switch_count     for n in self.nodes)
+                if eta_n_cnt > 0:
+                    eta_n_avg = eta_n_sum / eta_n_cnt
+                    eta_n_var = (eta_n_sq / eta_n_cnt) - eta_n_avg * eta_n_avg
+                    pfe_eta_n_clip_rate_series.append(eta_n_clip / eta_n_cnt)
+                    pfe_eta_n_avg_series.append(eta_n_avg)
+                    pfe_eta_n_var_series.append(max(0.0, eta_n_var))
+                else:
+                    pfe_eta_n_clip_rate_series.append(0.0)
+                    pfe_eta_n_avg_series.append(0.0)
+                    pfe_eta_n_var_series.append(0.0)
+                pfe_switch_rate_series.append(
+                    switch_cnt / route_count_sum if route_count_sum > 0 else 0.0
+                )
+
                 # 다음 윈도우 비율 계산용 — 노드 카운터 리셋
                 for n in self.nodes:
                     n.pfe_window_full_echo_count = 0
                     n.pfe_window_route_count     = 0
+                    n.pfe_window_adv_event_count  = 0
+                    n.pfe_window_adv_sum          = 0.0
+                    n.pfe_window_score_y_sum      = 0.0
+                    n.pfe_window_score_n_best_sum = 0.0
+                    n.pfe_window_eta_n_count      = 0
+                    n.pfe_window_eta_n_sum        = 0.0
+                    n.pfe_window_eta_n_sq_sum     = 0.0
+                    n.pfe_window_eta_n_clip_count = 0
+                    n.pfe_window_switch_count     = 0
 
                 # learned_aqrerm: 100 tick마다 reward로 train
                 # if self.controller is not None and self.controller.last_state is not None:
@@ -378,6 +435,15 @@ class Simulator:
         # PFE 진단 시계열 (PFE 외 알고리즘은 모두 0)
         self.pfe_total_point_series     = pfe_total_point_series
         self.pfe_full_echo_ratio_series = pfe_full_echo_ratio_series
+        # AdE 진단 시계열 — PFE_c_AdE 외엔 모두 0
+        self.pfe_adv_event_ratio_series = pfe_adv_event_ratio_series
+        self.pfe_adv_avg_series         = pfe_adv_avg_series
+        self.pfe_score_y_avg_series     = pfe_score_y_avg_series
+        self.pfe_score_n_avg_series     = pfe_score_n_avg_series
+        self.pfe_eta_n_clip_rate_series = pfe_eta_n_clip_rate_series
+        self.pfe_eta_n_avg_series       = pfe_eta_n_avg_series
+        self.pfe_eta_n_var_series       = pfe_eta_n_var_series
+        self.pfe_switch_rate_series     = pfe_switch_rate_series
         self.total_generated = total_generated
         self.total_delivered = total_delivered
         self.undelivered_count = sum(

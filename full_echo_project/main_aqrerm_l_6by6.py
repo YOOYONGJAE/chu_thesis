@@ -11,7 +11,7 @@ SEED = 800
 TOPOLOGY_GRID = {'num_nodes': GRID_NUM_NODES, 'adjacency': GRID_ADJACENCY}
 
 ETA = 0.9
-K = 0.5 / ETA       # eta*k = 0.5
+K = 0.5             # AQRERM 논문 기준 — eta2 = k · R_x
 
 BASE_PARAMS = {'eta': ETA, 'k': K}
 

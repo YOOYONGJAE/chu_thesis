@@ -14,7 +14,7 @@ TOPOLOGY_GRID = {'num_nodes': GRID_NUM_NODES, 'adjacency': GRID_ADJACENCY}
 # 파라미터 설정 (AQRERM 논문 기준)
 # -------------------------------------------------------------------------
 ETA = 0.9
-K = 0.5 / ETA       # eta*k = 0.5 이므로 k = 0.5/0.9 ≈ 0.556
+K = 0.5             # AQRERM 논문 기준 — eta2 = k · R_x, k=0.5
 L = 3
 C = 0.5             # AQLRERM 식 큐 페널티 — 본 sweep 에선 고정
 

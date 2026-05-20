@@ -4,7 +4,7 @@ from simulator import Simulator
 # =====================================================================
 # 공통 설정 — main_link_cut.py 와 동일
 # =====================================================================
-BASE_PARAMS   = {'eta': 0.9, 'k': 0.556, 'L': 3}
+BASE_PARAMS   = {'eta': 0.9, 'k': 0.5, 'L': 3}
 TOTAL_TICKS   = 13000
 STAT_INTERVAL = 100
 CUT_TICK      = 7000

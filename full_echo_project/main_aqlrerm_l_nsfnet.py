@@ -11,7 +11,7 @@ SEED = 800
 TOPOLOGY_NSFNET = {'num_nodes': NSFNET_NUM_NODES, 'adjacency': NSFNET_ADJACENCY}
 
 ETA = 0.9
-K = 0.5 / ETA       # eta*k = 0.5
+K = 0.5             # AQRERM 논문 기준 — eta2 = k · R_x
 C = 0.5             # AQLRERM 큐 페널티 가중치
 
 BASE_PARAMS = {'eta': ETA, 'k': K, 'c': C}
