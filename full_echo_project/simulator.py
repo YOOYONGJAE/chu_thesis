@@ -247,8 +247,14 @@ class Simulator:
             # 2.5 T_max 가속 감쇠 — 모든 노드 매 tick (decay 비활성 노드는 즉시 no-op)
             # 라우팅 안 한 노드의 T_max 도 부드럽게 낮춰야 high-watermark 문제 해소됨
             # current_tick 전달: aqlrerm_c05_l0_tdec 처럼 특정 시점부터 활성화되는 변형 지원
+            # 특정 알고리즘 변형 (aqlrerm_tdec, pfe_tdec, aqlrerm_c05_l0_tdec) 에서만 활성화되고, 나머지는 호출되어도 즉시 return
             for node in self.nodes:
                 node.tick_decay_tmax(tick)
+
+            # 2.6 PFE per-tick 포인트 적립 — 모든 노드 매 tick (적립 비활성 노드는 즉시 no-op)
+            # pfe_c_pre_echo_tick 변형에서만 활성화. 큐가 비어 라우팅 안 한 노드도 적립 진행.
+            for node in self.nodes:
+                node.tick_accumulate_point(tick)
 
             # 3. 새 패킷 생성 -> 이번 tick에는 incoming에만 넣고 끝
             n_packets = np.random.poisson(lam) # 포아송 분포에 따라 tick당 생성할 패킷 수 결정

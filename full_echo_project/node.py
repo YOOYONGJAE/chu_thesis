@@ -76,6 +76,17 @@ class Node:
             if algorithm == 'aqlrerm_c05_l0_tdec' else 0
         )
 
+        # PFE per-tick 포인트 적립 활성 여부 (변형 한정)
+        # 활성 시 simulator tick 루프가 모든 노드에 tick_accumulate_point() 호출 →
+        # 큐가 비어 라우팅 안 하는 tick 에도 gr 만큼 적립이 진행됨.
+        # 라우팅 함수 본문에서는 적립을 빼서 중복 적립 방지.
+        self.tick_accum_enabled = algorithm in (
+            'pfe_c_pre_echo_tick',
+            'pfe_c_pre_echo_tick_l0',
+            'pfe_then_aqrerm',
+            'pfe_pre_echo_tick',
+        )
+
         # ΔQ_min: 목적지별 직전 Q_min 저장
         self.prev_Q_min = {d: 1.0 for d in range(num_nodes) if d != node_id}
 
@@ -156,6 +167,20 @@ class Node:
             self.T_max = max(self.T_est, self.T_max - decrement)
 
     # -------------------------------------------------------------------------
+    # PFE per-tick 포인트 적립 — 매 tick 모든 노드에 호출 (simulator tick 루프).
+    # tick_accum_enabled=False 인 노드는 즉시 return.
+    # 라우팅 호출 여부와 무관하게 큐가 비어 있어도 적립 진행 →
+    # 한가한 노드도 풀에코 예산을 천천히 축적 가능.
+    # 활성 변형의 라우팅 함수는 본문에서 적립을 제거하여 중복 방지.
+    # -------------------------------------------------------------------------
+    def tick_accumulate_point(self, current_tick):
+        if not self.tick_accum_enabled:
+            return
+        gr    = self.params.get('pfe_gr', 0.1)
+        b_max = self.params.get('pfe_b_max', 0.5)
+        self.total_point = min(b_max, self.total_point + gr)
+
+    # -------------------------------------------------------------------------
     # 이 노드에서 dst까지의 최선 추정치 반환
     # exclude_node: 이 노드를 이웃 후보에서 제외 (Route Memory용)
     # -------------------------------------------------------------------------
@@ -226,14 +251,37 @@ class Node:
             # PFE_c + Advantage-weighted eta2 (AdE)
             # Full Echo 직후 fresh Score 차이로 비-y_star 학습률 차등 적용
             return self._route_pfe_c_ade(packet, current_tick, all_nodes)
+        
+            # ★ PFE_c_pre_echo: PFE_c_AdE 의 변형 — echo 와 노드 선정의 순서를 뒤집음
         elif self.algorithm == 'pfe_c_pre_echo':
-            # PFE_c_AdE 의 변형 — echo 와 노드 선정의 순서를 뒤집음
             # 포인트 충분 시: Full Echo 먼저 → fresh Score 로 y_star 선정 → eta/eta2 학습
             # 포인트 부족 시: stale 캐시로 y_star 선정 → y_star 만 update
             return self._route_pfe_c_pre_echo(packet, current_tick, all_nodes)
+        
         elif self.algorithm == 'pfe_c_pre_echo_l0':
             # PFE_c_pre_echo + memory_cut_tick (보통 7000) 이후 L=0 강제 (link_cut 시나리오용)
             return self._route_pfe_c_pre_echo_l0(packet, current_tick, all_nodes)
+        elif self.algorithm == 'pfe_c_pre_echo_tick':
+            # PFE_c_pre_echo 변형 — 라우팅 호출과 무관하게 매 tick 모든 노드에서 적립
+            # (적립은 simulator 의 tick_accumulate_point() 가 담당; 본문은 적립 X)
+            return self._route_pfe_c_pre_echo_tick(packet, current_tick, all_nodes)
+        elif self.algorithm == 'pfe_pre_echo_tick':
+            # PFE_c_pre_echo_tick 변형 — 큐 길이 항 (c · queue) 완전 제거.
+            # 선택은 t / Q 만으로, 적립은 동일하게 tick 단위.
+            return self._route_pfe_pre_echo_tick(packet, current_tick, all_nodes)
+        elif self.algorithm == 'pfe_c_pre_echo_tick_l0':
+            # PFE_c_pre_echo_Tick + memory_cut_tick (보통 7000) 이후 L=0 강제 (link_cut 시나리오용)
+            return self._route_pfe_c_pre_echo_tick_l0(packet, current_tick, all_nodes)
+        elif self.algorithm == 'pfe_then_aqrerm':
+            # Hybrid: switch_tick 이전엔 PFE_c_pre_echo_Tick, 이후엔 AQRERM 로 전환.
+            # Q 테이블은 그대로 유지되므로 PFE 가 채워둔 추정치를 AQRERM 이 이어받음.
+            # 적립은 PFE 단계에서 simulator 가 tick 마다 진행하고, AQRERM 단계에서도
+            # 계속 적립되지만 AQRERM 이 total_point 를 안 읽으므로 영향 없음 (낭비만).
+            switch_tick = self.params.get('switch_tick', 15000)
+            if current_tick < switch_tick:
+                return self._route_pfe_c_pre_echo_tick(packet, current_tick, all_nodes)
+            else:
+                return self._route_aqrerm(packet, current_tick, all_nodes)
         elif self.algorithm == 'pfe_c_ade_l0':
             # PFE_c_AdE + memory_cut_tick (보통 7000) 이후 L=0 강제
             # link_cut 시나리오용 — c 는 params['c'] (main_link_cut.py 에서 0.5) 그대로
@@ -730,14 +778,18 @@ class Node:
 
         self.update_T_est()
 
+        # R_x 는 현재 노드의 불안정도 지표임. 0 이면 안정적, 1 에 가까울수록 불안정.
+        R_x = self.T_est / self.T_max if self.T_max > 0 else 0.0
+
         # PFE 동적 가격 (Full Echo 1 회 비용)
-        sale_pt = 1.0 - (self.T_est / self.T_max) if self.T_max > 0 else 1.0
+        # sale_pt = 1.0 - (self.T_est / self.T_max) if self.T_max > 0 else 1.0
+        sale_pt = 1.0 - R_x if self.T_max > 0 else 1.0
         if sale_pt == 0:
             sale_pt = 0.1
         c_pt = self.params.get('pfe_c', sale_pt)
 
-        # 포인트 적립 (R_x 무관, 상수 gr)
-        R_x = self.T_est / self.T_max if self.T_max > 0 else 0.0
+
+        # 포인트는 매 라우팅마다 적립됨.
         self.total_point = min(b_max, self.total_point + gr)
 
         q = current_tick - packet.queue_entry_tick
@@ -807,6 +859,95 @@ class Node:
         return y_star
 
     # -------------------------------------------------------------------------
+    # PFE_c_pre_echo_Tick — _route_pfe_c_pre_echo 변형.
+    # 차이점: 라우팅 함수 본문에서 total_point += gr 줄을 제거.
+    # 대신 simulator tick 루프가 tick_accumulate_point() 로 매 tick 모든 노드에
+    # gr 만큼 적립. 큐가 비어 라우팅 안 하는 tick 에도 적립 진행됨.
+    # -------------------------------------------------------------------------
+    def _route_pfe_c_pre_echo_tick(self, packet, current_tick, all_nodes):
+        self.pfe_window_route_count += 1
+
+        dst   = packet.dst
+        eta   = self.params['eta']
+        k     = self.params['k']
+        b_max = self.params.get('pfe_b_max', 0.5)
+        L     = self.params['L']
+        c_q   = self.params['c']
+
+        self.update_T_est()
+
+
+
+        # ★ 본문 적립 제거 — 적립은 simulator 의 tick_accumulate_point() 가 담당
+        R_x = self.T_est / self.T_max if self.T_max > 0 else 0.0
+
+        # PFE 동적 가격 (Full Echo 1 회 비용)
+        sale_pt = max(0.1, 1.0 - R_x)
+
+        c_pt = self.params.get('pfe_c', sale_pt)
+
+        q = current_tick - packet.queue_entry_tick
+        s = 1
+        eta2 = R_x * k
+
+        # Route Memory 필터
+        visited = set(packet.route_memory)
+        candidates = [n for n in self.neighbors if n not in visited]
+        if not candidates:
+            candidates = self.neighbors
+
+        if self.total_point >= c_pt:
+            # === Pre-echo 모드 ===
+            self.total_point -= c_pt
+            self.pfe_window_full_echo_count += 1
+
+            t_values = {n: all_nodes[n].best_estimate(dst, exclude_node=self.id)
+                        for n in self.neighbors}
+            for n in self.neighbors:
+                self.last_known_queue[n] = len(all_nodes[n].queue)
+
+            def _score(n):
+                if math.isfinite(t_values[n]):
+                    return t_values[n] + c_q * self.last_known_queue[n]
+                else:
+                    return float('inf')
+
+            y_star = min(candidates, key=_score)
+
+            self.Q[dst][y_star] += eta * (
+                q + s + t_values[y_star] - self.Q[dst][y_star]
+            )
+            for n in self.neighbors:
+                if n == y_star:
+                    continue
+                if math.isfinite(t_values[n]):
+                    self.Q[dst][n] += eta2 * (
+                        q + s + t_values[n] - self.Q[dst][n]
+                    )
+        else:
+            # === Q-routing 모드 (포인트 부족) ===
+            y_star = min(
+                candidates,
+                key=lambda n: self.Q[dst][n] + c_q * self.last_known_queue[n]
+            )
+            t = all_nodes[y_star].best_estimate(dst, exclude_node=self.id)
+            self.last_known_queue[y_star] = len(all_nodes[y_star].queue)
+            self.Q[dst][y_star] += eta * (
+                q + s + t - self.Q[dst][y_star]
+            )
+
+        # Route Memory 갱신
+        if L == 0:
+            packet.route_memory = []
+        else:
+            new_memory = packet.route_memory + [self.id]
+            if len(new_memory) > L:
+                new_memory = new_memory[-L:]
+            packet.route_memory = new_memory
+
+        return y_star
+
+    # -------------------------------------------------------------------------
     # PFE_c_pre_echo_L0 — PFE_c_pre_echo 본체 + memory_cut_tick (보통 7000) 이후 L=0 강제.
     # link_cut 시나리오용. c 는 params['c'] 그대로 사용.
     # -------------------------------------------------------------------------
@@ -821,6 +962,106 @@ class Node:
                 self.params['L'] = original_L
         else:
             return self._route_pfe_c_pre_echo(packet, current_tick, all_nodes)
+
+    # -------------------------------------------------------------------------
+    # PFE_pre_echo_Tick — _route_pfe_c_pre_echo_tick 변형.
+    # 차이점: 선택과 Q-routing 폴백 모두에서 큐 길이 항 (c · queue) 을 완전히 제거.
+    # 결과적으로 PFE 의 즉시 큐 반응성을 버리고 t / Q 만으로 결정 → 후반 진동 완화.
+    # 적립은 simulator 의 tick_accumulate_point() 가 매 tick 담당 (동일).
+    # -------------------------------------------------------------------------
+    def _route_pfe_pre_echo_tick(self, packet, current_tick, all_nodes):
+        self.pfe_window_route_count += 1
+
+        dst   = packet.dst
+        eta   = self.params['eta']
+        k     = self.params['k']
+        b_max = self.params.get('pfe_b_max', 1.0)
+        L     = self.params['L']
+
+        self.update_T_est()
+
+        R_x = self.T_est / self.T_max if self.T_max > 0 else 0.0
+
+        # PFE 동적 가격 (Full Echo 1 회 비용)
+        sale_pt = max(0.1, 1.0 - R_x)
+        c_pt = self.params.get('pfe_c', sale_pt)
+
+        q = current_tick - packet.queue_entry_tick
+        s = 1
+        eta2 = R_x * k
+
+        # Route Memory 필터
+        visited = set(packet.route_memory)
+        candidates = [n for n in self.neighbors if n not in visited]
+        if not candidates:
+            candidates = self.neighbors
+
+        if self.total_point >= c_pt:
+            # === Pre-echo 모드 ===
+            self.total_point -= c_pt
+            self.pfe_window_full_echo_count += 1
+
+            t_values = {n: all_nodes[n].best_estimate(dst, exclude_node=self.id)
+                        for n in self.neighbors}
+            # 큐 길이는 통계 / 진단용으로만 캐시. 선택 식에는 안 들어감.
+            for n in self.neighbors:
+                self.last_known_queue[n] = len(all_nodes[n].queue)
+
+            # 선택 식: t_values 만 사용 (큐 항 제거)
+            def _score(n):
+                if math.isfinite(t_values[n]):
+                    return t_values[n]
+                else:
+                    return float('inf')
+
+            y_star = min(candidates, key=_score)
+
+            self.Q[dst][y_star] += eta * (
+                q + s + t_values[y_star] - self.Q[dst][y_star]
+            )
+            for n in self.neighbors:
+                if n == y_star:
+                    continue
+                if math.isfinite(t_values[n]):
+                    self.Q[dst][n] += eta2 * (
+                        q + s + t_values[n] - self.Q[dst][n]
+                    )
+        else:
+            # === Q-routing 모드 (포인트 부족) ===
+            # 선택 식: stale Q 만 사용 (큐 항 제거)
+            y_star = min(candidates, key=lambda n: self.Q[dst][n])
+            t = all_nodes[y_star].best_estimate(dst, exclude_node=self.id)
+            self.last_known_queue[y_star] = len(all_nodes[y_star].queue)
+            self.Q[dst][y_star] += eta * (
+                q + s + t - self.Q[dst][y_star]
+            )
+
+        # Route Memory 갱신
+        if L == 0:
+            packet.route_memory = []
+        else:
+            new_memory = packet.route_memory + [self.id]
+            if len(new_memory) > L:
+                new_memory = new_memory[-L:]
+            packet.route_memory = new_memory
+
+        return y_star
+
+    # -------------------------------------------------------------------------
+    # PFE_c_pre_echo_Tick_L0 — _route_pfe_c_pre_echo_tick 본체 + memory_cut_tick 이후 L=0 강제.
+    # link_cut 시나리오에서 cut 시점부터 Route Memory 무효화하면서도 매 tick 적립 유지.
+    # -------------------------------------------------------------------------
+    def _route_pfe_c_pre_echo_tick_l0(self, packet, current_tick, all_nodes):
+        cut_tick = self.params.get('memory_cut_tick', 0)
+        if current_tick >= cut_tick:
+            original_L = self.params['L']
+            self.params['L'] = 0
+            try:
+                return self._route_pfe_c_pre_echo_tick(packet, current_tick, all_nodes)
+            finally:
+                self.params['L'] = original_L
+        else:
+            return self._route_pfe_c_pre_echo_tick(packet, current_tick, all_nodes)
 
     # -------------------------------------------------------------------------
     # PFE_c_AdE_L0 — PFE_c_AdE 본체 + memory_cut_tick (보통 7000) 이후 L=0 강제.

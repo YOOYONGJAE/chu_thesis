@@ -12,19 +12,22 @@ SEED = 500
 BASE_PARAMS = {'eta': 0.9, 'k': 0.5, 'L': 3}
 TOPO = {'num_nodes': G_N, 'adjacency': G_A}
 
-ALGORITHMS = ['aqrerm',
-            #   'aqrerm_l0',           # AQRERM + 7000 이후 L=0
-            #   'aqlrerm_c03_l0',
-              'aqlrerm_c05_l0',
-              'aqlrerm_c_ade_l0',    # AQLRERM_c=0.5_AdE + 7000 이후 L=0
+ALGORITHMS = [
+            'aqrerm',
+              'aqrerm_l0',           # AQRERM + 7000 이후 L=0
+              'aqlrerm_c03_l0',
+            #   'aqlrerm_c05_l0',
+            #   'aqlrerm_c_ade_l0',    # AQLRERM_c=0.5_AdE + 7000 이후 L=0
             #   'pfe_c05_l0',
               # 'pfe_c03_l0',
-              'pfe_c_ade',           # L=0 전환 없음 (L=3 유지)
+            #   'pfe_c_ade',           # L=0 전환 없음 (L=3 유지)
             #   'pfe_c01_ade_l0',      # L=0 + c=0.1
-              'pfe_c_ade_l0',        # L=0 + c=0.5 (params['c'] 그대로)
+            #   'pfe_c_ade_l0',        # L=0 + c=0.5 (params['c'] 그대로)
             #   'pfe_c10_ade_l0',      # L=0 + c=1.0
-              'pfe_c_pre_echo',      # echo → 선정 → 학습 순서 (L=0 전환 없음)
+            #   'pfe_c_pre_echo',      # echo → 선정 → 학습 순서 (L=0 전환 없음)
               'pfe_c_pre_echo_l0',   # Pre-echo + 7000 이후 L=0 강제
+            #   'pfe_c_pre_echo_tick',     # Pre-echo + tick 적립 (L=0 전환 없음)
+              'pfe_c_pre_echo_tick_l0',  # Pre-echo + tick 적립 + 7000 이후 L=0 강제
               ]
 LABELS = {'q_routing': 'Q-routing', 'aqfe': 'AQFE', 'aqrerm': 'AQRERM',
           'aqrerm_l0': 'AQRERM_L=0',
@@ -48,6 +51,8 @@ LABELS = {'q_routing': 'Q-routing', 'aqfe': 'AQFE', 'aqrerm': 'AQRERM',
           'aqlrerm_c_ade_l0': 'AQLRERM_c=0.5_L=0_AdE',
           'pfe_c_pre_echo':   'PFE_c=0.5_PreEcho',
           'pfe_c_pre_echo_l0': 'PFE_c=0.5_L=0_PreEcho',
+          'pfe_c_pre_echo_tick':    'PFE_c=0.5_PreEcho_Tick',
+          'pfe_c_pre_echo_tick_l0': 'PFE_c=0.5_L=0_PreEcho_Tick',
           'aqlrerm_all_no_mem': 'AQLRERM_ALL_L=0',
           'aqlrerm_7000_no_c':  'AQLRERM_C=0_L=0',
         #   'aqlrerm_7000_one_c': 'AQLRERM_7000_C=1_L=0',
@@ -61,7 +66,9 @@ COLORS = {'q_routing': 'blue', 'aqfe': 'orange',
           'aqlrerm_c05_l0': '#E69F00',            # 오렌지
           'aqlrerm_c_ade_l0': "#0044FF",          # 청록 (AQLRERM_c=0.5_L=0_AdE)
           'pfe_c_pre_echo':   '#F0E442',          # 노랑 (PFE Pre-echo, L=0 전환 없음)
-          'pfe_c_pre_echo_l0': '#D55E00',         # 주홍 (PFE Pre-echo + L=0 at 7000)
+          'pfe_c_pre_echo_l0': "#9CAEE9",         # 주홍 (PFE Pre-echo + L=0 at 7000)
+          'pfe_c_pre_echo_tick':    '#009E73',    # 청록 (Pre-echo + tick 적립, L=0 전환 없음)
+          'pfe_c_pre_echo_tick_l0': "#E983BB",    # 분홍 (Pre-echo + tick 적립 + L=0 at 7000)
           'pfe_c_ade':      '#56B4E9',            # 하늘색 (L=0 전환 없음)
           'pfe_c01_ade_l0': '#F0E442',            # 노랑 (c=0.1, 옅은 톤 느낌)
           'pfe_c_ade_l0':   "#CFD66B",            # 분홍보라 (c=0.5, 기준)
@@ -75,7 +82,7 @@ COLORS = {'q_routing': 'blue', 'aqfe': 'orange',
           'aqlrerm_c07':    'magenta',
           'aqlrerm_high_c': 'darkmagenta',
           'aqlrerm_c01_l0': 'gold',
-          'aqlrerm_c03_l0': 'chocolate',
+          'aqlrerm_c03_l0': '#0072B2',
           'aqlrerm_c05_l0_tdec': 'skyblue',
           'aqlrerm_c07_l0': 'magenta',
           'pfe_c05_l0':     'red',
@@ -101,7 +108,7 @@ CUT_SCENARIOS = [
 LAMBDAS = [1.5, 2]
 
 # c-sweep 설정
-C_VALUES = [0.5]
+C_VALUES = [0.3]
 MD_PATH = 'result_link_cut.md'
 
 
@@ -113,7 +120,7 @@ def run_one_c(c, md_file):
 
     fig, axes = plt.subplots(2, 2, figsize=(45, 20))
     train_l_range = f"{min(LTrainController.ACTIONS)}~{max(LTrainController.ACTIONS)}"
-    fig.suptitle(f"6x6 Grid (L={BASE_PARAMS['L']}, TRAIN_L={train_l_range})")
+    fig.suptitle(f"6x6 Grid (L={BASE_PARAMS['L']}, TRAIN_L={train_l_range}, seed={SEED})")
 
     md_file.write(f"## c = {c}\n\n")
 

@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from simulator import Simulator
 from topology_nsfnet import NUM_NODES as NSFNET_NUM_NODES, ADJACENCY as NSFNET_ADJACENCY
 
-SEED = 800
+SEED = 500
 
 TOPOLOGY_NSFNET = {'num_nodes': NSFNET_NUM_NODES, 'adjacency': NSFNET_ADJACENCY}
 
@@ -19,11 +19,22 @@ L = 3
 
 BASE_PARAMS = {'eta': ETA, 'k': K, 'L': L}
 
-ALGORITHMS = ['aqrerm', 'aqlrerm_low_c', 'aqlrerm_c03', 'aqlrerm',
-              'aqlrerm_c07', 'aqlrerm_high_c',
-              'aqlrerm_c05_l0']
+ALGORITHMS = [
+    'aqrerm',
+    'aqlrerm_c03',
+    'aqlrerm',
+    # 'aqlrerm_tdec',
+    # 'pfe',
+    # 'pfe_tdec',
+    'pfe_c',
+    # 'pfe_c03',
+    'aqlrerm_c_ade',
+    'pfe_c_ade',
+    'pfe_c_pre_echo',
+    ]
 LABELS = {'q_routing': 'Q-routing', 'aqfe': 'AQFE', 'aqrerm': 'AQRERM',
           'aqlrerm': 'AQLRERM_c=0.5',
+          'aqlrerm_tdec': 'AQLRERM_c=0.5_Tdec',
           'aqlrerm_low_c': 'AQLRERM_c=0.1',
           'aqlrerm_c03':   'AQLRERM_c=0.3',
           'aqlrerm_c07':   'AQLRERM_c=0.7',
@@ -33,18 +44,37 @@ LABELS = {'q_routing': 'Q-routing', 'aqfe': 'AQFE', 'aqrerm': 'AQRERM',
           'aqlrerm_all_no_mem': 'AQLRERM_ALL_NO_MEM',
           'aqlrerm_l_train': 'AQLRERM_L_TRAIN',
           'aqlrerm_l_close': 'AQLRERM_L_CLOSE',
+          'pfe': 'PFE',
+          'pfe_tdec': 'PFE_Tdec',
+          'pfe_c':    'PFE_c=0.5',
+          'pfe_c03':  'PFE_c=0.3',
+          'aqlrerm_c_ade': 'AQLRERM_c=0.5_AdE',
+          'pfe_c_ade':     'PFE_c=0.5_AdE',
+          'pfe_c_pre_echo': 'PFE_c=0.5_PreEcho',
           'learned_aqrerm': 'Learned AQRERM', 'bandit_aqrerm': 'Bandit AQRERM'}
-COLORS = {'q_routing': 'blue', 'aqfe': 'orange', 'aqrerm': 'navy',
-          'aqlrerm':        'darkorange',         # c=0.5 (기본)
-          'aqlrerm_low_c':  'gold',               # c=0.1
-          'aqlrerm_c03':    'chocolate',          # c=0.3 (갈색 — darkorange 와 명확히 구분)
-          'aqlrerm_c07':    'magenta',            # c=0.7 (밝은 분홍 — teal 과 명확히 구분)
-          'aqlrerm_high_c': 'darkmagenta',        # c=1.0
+COLORS = {'q_routing': 'blue', 'aqfe': 'orange',
+          # === 활성화 변형: family 별 hue 분리, c 값 따라 톤 차이 ===
+          'aqrerm':         'navy',               # 기준선 — 차가운 단일색
+          'aqlrerm':        'darkorange',         # AQLRERM family (오렌지) — c=0.5
+          'aqlrerm_c03':    'gold',               # AQLRERM family — c=0.3 (밝은 오렌지)
+          'aqlrerm_c_ade':  'green',              # AQLRERM + AdE — family 와 구분
+          'pfe_c':          'red',                # PFE family (빨강) — c=0.5
+          'pfe_c03':        'lightcoral',         # PFE family — c=0.3 (밝은 빨강)
+          'pfe_c_ade':      'magenta',            # PFE + AdE — family 와 구분
+          'pfe_c_pre_echo': 'purple',             # PFE + Pre-echo — 보라 (magenta 와 다른 톤)
+
+          # === 비활성화 변형: 기존 매핑 유지 ===
+          'aqlrerm_tdec':   'skyblue',
+          'aqlrerm_low_c':  'chocolate',
+          'aqlrerm_c07':    'magenta',
+          'aqlrerm_high_c': 'darkmagenta',
           'aqlrerm_c05_l0': 'crimson',            # c=0.5 + L=0
           'aqlrerm_7000_no_mem': 'cyan',
           'aqlrerm_all_no_mem': 'teal',
           'aqlrerm_l_train': 'black',
           'aqlrerm_l_close': 'olive',
+          'pfe':            'black',
+          'pfe_tdec':       'crimson',
           'learned_aqrerm': 'brown', 'bandit_aqrerm': 'purple'}
 
 STAT_INTERVAL = 100
@@ -54,11 +84,11 @@ C_VALUES = [0.5]
 MD_PATH = 'result_nsfnet.md'
 
 EXPERIMENTS = [
-    {'lam': 2.5,   'total_ticks': 14000,  'title': 'λ=2.5'},
-    # {'lam': 2,   'total_ticks': 10000, 'title': 'λ=2'},
-    {'lam': 3, 'total_ticks': 14000, 'title': 'λ=3'},
-    {'lam': 4,   'total_ticks': 14000, 'title': 'λ=4'},
-    {'lam': 5, 'total_ticks': 14000, 'title': 'λ=5'},
+    {'lam': 1,   'total_ticks': 40000,  'title': 'λ=1'},
+    {'lam': 2,   'total_ticks': 40000,  'title': 'λ=2'},
+    {'lam': 3,   'total_ticks': 40000, 'title': 'λ=3'},
+    {'lam': 3.5, 'total_ticks': 40000, 'title': 'λ=3.5'},
+    {'lam': 3.7, 'total_ticks': 40000, 'title': 'λ=3.7'},
 ]
 
 
@@ -68,7 +98,7 @@ EXPERIMENTS = [
 def run_one_c(c, md_file):
     params = {**BASE_PARAMS, 'c': c}
 
-    fig, axes = plt.subplots(1, 4, figsize=(30, 8))
+    fig, axes = plt.subplots(1, 4, figsize=(60, 15))
     fig.suptitle(f"NSFNET (c={c}, L={L})")
 
     md_file.write(f"## c = {c}\n\n")
@@ -113,6 +143,24 @@ def run_one_c(c, md_file):
                 ]
                 print(f"      [T_est ] {' '.join(f'{m:6.2f}' for m in t_est_chunks)}   (1000-tick 평균, 네트워크 avg)")
                 print(f"      [T_max ] {' '.join(f'{m:6.2f}' for m in t_max_chunks)}   (1000-tick 평균, 네트워크 avg)")
+
+                # ---- PFE 진단: Full Echo 발동 비율, 평균 누적 포인트 (PFE 일 때만) ----
+                # ratio: 윈도우 동안 (Full Echo 실행 라우팅 / 전체 라우팅 호출) — 0~1
+                # total_point: stat_interval 시점의 네트워크 평균 포인트 잔고
+                if algo in ('pfe', 'pfe_tdec', 'pfe_c', 'pfe_c03', 'pfe_c_ade', 'pfe_c_pre_echo'):
+                    fe_series = getattr(sim, 'pfe_full_echo_ratio_series', None)
+                    tp_series = getattr(sim, 'pfe_total_point_series', None)
+                    if fe_series and tp_series:
+                        fe_chunks = [
+                            float(np.mean(fe_series[i:i + chunk_size]))
+                            for i in range(0, chunk_size * n_chunks, chunk_size)
+                        ]
+                        tp_chunks = [
+                            float(np.mean(tp_series[i:i + chunk_size]))
+                            for i in range(0, chunk_size * n_chunks, chunk_size)
+                        ]
+                        print(f"      [FE_rt ] {' '.join(f'{m:6.3f}' for m in fe_chunks)}   (1000-tick 평균, Full Echo 발동 비율)")
+                        print(f"      [Point ] {' '.join(f'{m:6.2f}' for m in tp_chunks)}   (1000-tick 평균, 노드별 total_point 평균)")
 
             ax.plot(x_axis, adt, label=LABELS[algo], color=COLORS[algo])
 
