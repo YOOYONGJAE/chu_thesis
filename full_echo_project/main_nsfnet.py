@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from simulator import Simulator
 from topology_nsfnet import NUM_NODES as NSFNET_NUM_NODES, ADJACENCY as NSFNET_ADJACENCY
 
-SEED = 500
+SEED = 100
 
 TOPOLOGY_NSFNET = {'num_nodes': NSFNET_NUM_NODES, 'adjacency': NSFNET_ADJACENCY}
 
@@ -14,26 +14,31 @@ TOPOLOGY_NSFNET = {'num_nodes': NSFNET_NUM_NODES, 'adjacency': NSFNET_ADJACENCY}
 # 파라미터 설정 (AQRERM 논문 기준)
 # -------------------------------------------------------------------------
 ETA = 0.9
-K = 0.5             # AQRERM 논문 기준 — eta2 = k · R_x, k=0.5
-L = 3
+K   = 0.5           # AQRERM 논문 기준 — eta2 = k · R_x, k=0.5
+L   = 3
 
 BASE_PARAMS = {'eta': ETA, 'k': K, 'L': L}
 
 ALGORITHMS = [
+    'q_routing',
+    'aqfe',
     'aqrerm',
-    'aqlrerm_c03',
-    'aqlrerm',
+    # 'aqlrerm_c03',
+    # 'aqlrerm',
     # 'aqlrerm_tdec',
     # 'pfe',
     # 'pfe_tdec',
-    'pfe_c',
+    # 'pfe_ppc',
     # 'pfe_c03',
-    'aqlrerm_c_ade',
-    'pfe_c_ade',
-    'pfe_c_pre_echo',
+    # 'aqlrerm_c_ade',
+    # 'pfe_c_ade',
+    # 'pfe_c_pre_echo',
+    'pfe_c_pre_echo_tick',  # ★ 변형: 라우팅 안 해도 매 tick gr 적립 (idle 노드도 포인트 누적)
+    # 'pfe_pre_echo_tick',    # ★ 변형: 큐 항 (c · queue) 제거, 선택은 t / Q 만
+    # 'pfe_then_aqrerm',      # ★ Hybrid: switch_tick 까지 PFE_c_pre_echo_tick, 이후 AQRERM
     ]
 LABELS = {'q_routing': 'Q-routing', 'aqfe': 'AQFE', 'aqrerm': 'AQRERM',
-          'aqlrerm': 'AQLRERM_c=0.5',
+          'aqlrerm': 'AQLRERM_c',
           'aqlrerm_tdec': 'AQLRERM_c=0.5_Tdec',
           'aqlrerm_low_c': 'AQLRERM_c=0.1',
           'aqlrerm_c03':   'AQLRERM_c=0.3',
@@ -50,7 +55,10 @@ LABELS = {'q_routing': 'Q-routing', 'aqfe': 'AQFE', 'aqrerm': 'AQRERM',
           'pfe_c03':  'PFE_c=0.3',
           'aqlrerm_c_ade': 'AQLRERM_c=0.5_AdE',
           'pfe_c_ade':     'PFE_c=0.5_AdE',
-          'pfe_c_pre_echo': 'PFE_c=0.5_PreEcho',
+          'pfe_c_pre_echo': 'PFE_c_PreEcho',
+          'pfe_c_pre_echo_tick': 'PFE_c_PreEcho_Tick',
+          'pfe_pre_echo_tick':   'PFE_PreEcho_Tick',
+          'pfe_then_aqrerm': 'Hybrid_PFE→AQRERM',
           'learned_aqrerm': 'Learned AQRERM', 'bandit_aqrerm': 'Bandit AQRERM'}
 COLORS = {'q_routing': 'blue', 'aqfe': 'orange',
           # === 활성화 변형: family 별 hue 분리, c 값 따라 톤 차이 ===
@@ -62,6 +70,9 @@ COLORS = {'q_routing': 'blue', 'aqfe': 'orange',
           'pfe_c03':        'lightcoral',         # PFE family — c=0.3 (밝은 빨강)
           'pfe_c_ade':      'magenta',            # PFE + AdE — family 와 구분
           'pfe_c_pre_echo': 'purple',             # PFE + Pre-echo — 보라 (magenta 와 다른 톤)
+          'pfe_c_pre_echo_tick': 'red',        # PFE + Pre-echo + tick 적립 — 같은 family, 진한 톤
+          'pfe_pre_echo_tick':   'teal',       # PFE + Pre-echo + tick 적립 + 큐 항 제거 — 청록
+          'pfe_then_aqrerm': 'darkgreen',      # Hybrid — 두 family 와 명확히 구분되는 녹색
 
           # === 비활성화 변형: 기존 매핑 유지 ===
           'aqlrerm_tdec':   'skyblue',
@@ -77,10 +88,10 @@ COLORS = {'q_routing': 'blue', 'aqfe': 'orange',
           'pfe_tdec':       'crimson',
           'learned_aqrerm': 'brown', 'bandit_aqrerm': 'purple'}
 
-STAT_INTERVAL = 100
+STAT_INTERVAL = 200
 
 # c-sweep 설정
-C_VALUES = [0.5]
+C_VALUES = [0.22]
 MD_PATH = 'result_nsfnet.md'
 
 EXPERIMENTS = [
@@ -89,6 +100,7 @@ EXPERIMENTS = [
     {'lam': 3,   'total_ticks': 40000, 'title': 'λ=3'},
     {'lam': 3.5, 'total_ticks': 40000, 'title': 'λ=3.5'},
     {'lam': 3.7, 'total_ticks': 40000, 'title': 'λ=3.7'},
+    # {'lam': 4.0, 'total_ticks': 14000, 'title': 'λ=4.0'},
 ]
 
 
@@ -96,10 +108,13 @@ EXPERIMENTS = [
 # 한 c 값에 대한 실험: 4개 부하별 ADT 그래프 + MD 로그 누적
 # -------------------------------------------------------------------------
 def run_one_c(c, md_file):
-    params = {**BASE_PARAMS, 'c': c}
+    # switch_tick — pfe_then_aqrerm 전용 (다른 알고리즘은 무시).
+    # 4000 은 c=0.3, λ=3~3.5 에서 PFE/AQRERM 곡선 교차 부근 추정값.
+    params = {**BASE_PARAMS, 'c': c, 'switch_tick': 15000}
 
-    fig, axes = plt.subplots(1, 4, figsize=(60, 15))
-    fig.suptitle(f"NSFNET (c={c}, L={L})")
+    fig, axes = plt.subplots(1, len(EXPERIMENTS), figsize=(60, 8), squeeze=False)
+    axes = axes.flatten()  # EXPERIMENTS 가 1 개여도 1D 배열로 유지
+    fig.suptitle(f"NSFNET (c={c}, L={L}, seed={SEED})")
 
     md_file.write(f"## c = {c}\n\n")
 

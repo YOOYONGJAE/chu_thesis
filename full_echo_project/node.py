@@ -176,7 +176,7 @@ class Node:
     def tick_accumulate_point(self, current_tick):
         if not self.tick_accum_enabled:
             return
-        gr    = self.params.get('pfe_gr', 0.1)
+        gr    = self.params.get('pfe_gr', 0.133)
         b_max = self.params.get('pfe_b_max', 0.5)
         self.total_point = min(b_max, self.total_point + gr)
 

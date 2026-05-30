@@ -70,7 +70,8 @@ if __name__ == '__main__':
     with open(MD_PATH, 'w', encoding='utf-8') as md:
         md.write('# AQRERM L-sweep on 6x6 Grid\n\n')
 
-        fig, axes = plt.subplots(1, 4, figsize=(24, 5))
+        fig, axes = plt.subplots(1, len(EXPERIMENTS), figsize=(24, 5), squeeze=False)
+        axes = axes.flatten()  # EXPERIMENTS 가 1 개여도 1D 배열로 유지
         fig.suptitle("AQRERM L-sweep (6x6 Grid)")
 
         for ax, exp in zip(axes, EXPERIMENTS):

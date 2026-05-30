@@ -4,7 +4,7 @@ import matplotlib
 matplotlib.use('Agg')  # GUI 없이 파일로만 저장
 import matplotlib.pyplot as plt
 from simulator import Simulator
-from topology_grid import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACENCY
+from topology_nsfnet import NUM_NODES as NSFNET_NUM_NODES, ADJACENCY as NSFNET_ADJACENCY
 
 # -------------------------------------------------------------------------
 # 파라미터 설정
@@ -12,16 +12,16 @@ from topology_grid import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACEN
 ETA = 0.9
 K   = 0.5
 L   = 3
-C   = 0.3   # pfe_c_pre_echo_tick 의 큐 페널티 가중치 (다른 알고리즘은 이 키를 안 읽음)
+C   = 0.22   # pfe_c_pre_echo_tick 의 큐 페널티 가중치 (다른 알고리즘은 이 키를 안 읽음)
 BASE_PARAMS = {'eta': ETA, 'k': K, 'L': L, 'c': C}
 
-TOPOLOGY_GRID = {'num_nodes': GRID_NUM_NODES, 'adjacency': GRID_ADJACENCY}
+TOPOLOGY_NSFNET = {'num_nodes': NSFNET_NUM_NODES, 'adjacency': NSFNET_ADJACENCY}
 
 # 비교 대상 알고리즘 (활성 리스트만 실제 실행, 나머지는 LABELS/COLORS 매핑만 유지)
 ALGORITHMS = ['aqrerm', 'pfe_c_pre_echo_tick']
 LABELS = {
-    'q_routing':           'Q-routing',
-    'aqfe':                'AQFE',
+    # 'q_routing':           'Q-routing',
+    # 'aqfe':                'AQFE',
     'aqrerm':              'AQRERM',
     'pfe_c_pre_echo_tick': 'PFE_c_PreEcho_Tick',
 }
@@ -33,18 +33,21 @@ COLORS = {
     'pfe_c_pre_echo_tick': '#D55E00',  # 주홍 (vermillion)
 }
 
-# 10 개 시드 × 3 알고리즘 × 부하별 반복
+# 10 개 시드 × 알고리즘 × 부하별 반복
 SEEDS = list(range(100, 1001, 100))  # [100, 200, ..., 1000]
 
 STAT_INTERVAL = 100
-MD_PATH = 'result_compare_algo.md'
+MD_PATH = 'result_compare_algos_nsfnet.md'
 
 EXPERIMENTS = [
-    {'lam': 1, 'total_ticks': 14000, 'title': 'λ=1'},
-    {'lam': 2, 'total_ticks': 14000, 'title': 'λ=2'},
-    {'lam': 3, 'total_ticks': 14000, 'title': 'λ=3'},
-    {'lam': 3.5, 'total_ticks': 14000, 'title': 'λ=3.5'},
-    {'lam': 3.7, 'total_ticks': 14000, 'title': 'λ=3.7'},
+    # {'lam': 1, 'total_ticks': 14000, 'title': 'λ=1'},
+    {'lam': 2, 'total_ticks': 40000, 'title': 'λ=2'},
+    {'lam': 3, 'total_ticks': 40000, 'title': 'λ=3'},
+    {'lam': 3.5, 'total_ticks': 40000, 'title': 'λ=3.5'},
+    {'lam': 3.7, 'total_ticks': 40000, 'title': 'λ=3.7'},
+    {'lam': 3.8, 'total_ticks': 40000, 'title': 'λ=3.8'},
+    # {'lam': 3.9, 'total_ticks': 40000, 'title': 'λ=3.9'},
+    # {'lam': 4.0, 'total_ticks': 40000, 'title': 'λ=4.0'},
 ]
 
 
@@ -54,24 +57,25 @@ EXPERIMENTS = [
 def run_one(algo, lam, total_ticks, seed):
     random.seed(seed)
     np.random.seed(seed)
-    sim = Simulator(algorithm=algo, params=BASE_PARAMS, seed=seed, topology=TOPOLOGY_GRID)
+    sim = Simulator(algorithm=algo, params=BASE_PARAMS, seed=seed, topology=TOPOLOGY_NSFNET)
     adt = sim.run(lam=lam, total_ticks=total_ticks, stat_interval=STAT_INTERVAL)
     return sim, adt
 
 
 # -------------------------------------------------------------------------
-# 메인: 각 부하별로 3 개 알고리즘을 10 시드씩 돌려 median + IQR 시각화
+# 메인: 각 부하별로 알고리즘들을 10 시드씩 돌려 median + IQR 시각화
 # -------------------------------------------------------------------------
 def run_all():
-    fig, axes = plt.subplots(1, len(EXPERIMENTS), figsize=(30, 8))
+    fig, axes = plt.subplots(1, len(EXPERIMENTS), figsize=(60, 10), squeeze=False)
+    axes = axes.flatten()  # EXPERIMENTS 가 1 개여도 1D 배열로 유지
     active_labels = ' / '.join(LABELS[a] for a in ALGORITHMS)
     fig.suptitle(
-        f"6x6 Grid — {active_labels} comparison "
+        f"NSFNET — {active_labels} comparison "
         f"(seeds={SEEDS[0]}~{SEEDS[-1]}, n={len(SEEDS)}, median + IQR band)"
     )
 
     with open(MD_PATH, 'w', encoding='utf-8') as md:
-        md.write('# 6x6 Grid Algorithm comparison (seed sweep)\n\n')
+        md.write('# NSFNET Algorithm comparison (seed sweep)\n\n')
         md.write(f'- Seeds: {SEEDS}\n')
         md.write(f'- Algorithms: {[LABELS[a] for a in ALGORITHMS]}\n')
         md.write(f'- BASE_PARAMS: {BASE_PARAMS}\n\n')
@@ -137,7 +141,7 @@ def run_all():
             ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    filename = 'result_compare_algo.png'
+    filename = 'result_compare_algos_nsfnet.png'
     plt.savefig(filename, dpi=150)
     print(f"\n결과 저장: {filename}")
     plt.close()

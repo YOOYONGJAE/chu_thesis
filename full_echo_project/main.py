@@ -21,7 +21,7 @@ L   = 3
 BASE_PARAMS = {'eta': ETA, 'k': K, 'L': L}
 
 ALGORITHMS = [
-    # 'q_routing',
+    'q_routing',
     'aqfe',
     'aqrerm',
     # 'aqlrerm_c03',
@@ -90,16 +90,21 @@ COLORS = {'q_routing': 'blue', 'aqfe': 'orange',
 STAT_INTERVAL = 200
 
 # c-sweep 설정
-C_VALUES = [0.3]
+C_VALUES = [0.22]
 MD_PATH = 'result_grid.md'
 
 EXPERIMENTS = [
-    {'lam': 1,   'total_ticks': 40000,  'title': 'λ=1'},
-    {'lam': 2,   'total_ticks': 40000,  'title': 'λ=2'},
-    {'lam': 3,   'total_ticks': 40000, 'title': 'λ=3'},
-    {'lam': 3.5, 'total_ticks': 40000, 'title': 'λ=3.5'},
-    {'lam': 3.7, 'total_ticks': 40000, 'title': 'λ=3.7'},
-    # {'lam': 4.0, 'total_ticks': 14000, 'title': 'λ=4.0'},
+    # {'lam': 1,   'total_ticks': 40000,  'title': 'λ=1'},
+    # {'lam': 2,   'total_ticks': 40000,  'title': 'λ=2'},
+    # {'lam': 3,   'total_ticks': 40000, 'title': 'λ=3'},
+    {'lam': 3.5, 'total_ticks': 80000, 'title': 'λ=3.5'},
+    # {'lam': 3.7, 'total_ticks': 40000, 'title': 'λ=3.7'},
+    # {'lam': 3.8, 'total_ticks': 40000, 'title': 'λ=3.8'},
+    # {'lam': 3.9, 'total_ticks': 40000, 'title': 'λ=3.9'},
+    # {'lam': 4.0, 'total_ticks': 40000, 'title': 'λ=4.0'},
+    # {'lam': 4.1, 'total_ticks': 40000, 'title': 'λ=4.1'},
+    # {'lam': 4.2, 'total_ticks': 40000, 'title': 'λ=4.2'},
+    # {'lam': 4.3, 'total_ticks': 40000, 'title': 'λ=4.3'},
 ]
 
 
@@ -111,7 +116,8 @@ def run_one_c(c, md_file):
     # 4000 은 c=0.3, λ=3~3.5 에서 PFE/AQRERM 곡선 교차 부근 추정값.
     params = {**BASE_PARAMS, 'c': c, 'switch_tick': 15000}
 
-    fig, axes = plt.subplots(1, len(EXPERIMENTS), figsize=(60, 8))
+    fig, axes = plt.subplots(1, len(EXPERIMENTS), figsize=(60, 8), squeeze=False)
+    axes = axes.flatten()  # EXPERIMENTS 가 1 개여도 1D 배열로 유지
     fig.suptitle(f"6x6 Grid (c={c}, L={L}, seed={SEED})")
 
     md_file.write(f"## c = {c}\n\n")

@@ -82,9 +82,8 @@ def print_diagnostics(sim, total_ticks, is_pfe):
 # 메인 실험: 5 개 부하 × (2 개 baseline + 5 개 b_max sweep) 그래프
 # -------------------------------------------------------------------------
 def run_bmax_sweep(md_file):
-    fig, axes = plt.subplots(1, len(EXPERIMENTS), figsize=(45, 8))
-    if len(EXPERIMENTS) == 1:
-        axes = [axes]   # 단일 Axes 를 list 로 wrap (zip 호환)
+    fig, axes = plt.subplots(1, len(EXPERIMENTS), figsize=(45, 8), squeeze=False)
+    axes = axes.flatten()  # EXPERIMENTS 가 1 개여도 1D 배열로 유지
     fig.suptitle(
         f"6x6 Grid — PFE_c_AdE b_max sweep (c={C}, L={L})  "
         f"b_max ∈ {BMAX_VALUES}"
