@@ -1,7 +1,7 @@
 import math
 import random
 from collections import deque
-from echo_controller import EchoController
+# from echo_controller import EchoController
 
 
 # =====================================================================
@@ -20,7 +20,7 @@ PFE_TOTAL_POINT_INITIAL = 0.0   # 시작 포인트. 0 이면 처음엔 Full Echo
 #  - 적분하면 drop ≈ (coef/2) · age² · T_max — age 의 2차 함수 (concave 감소).
 #  - peak 가 진짜 위기였다면 T_est 가 빠르게 따라잡아 갱신 → age 리셋 되어
 #    decay 가 다시 0 부터 시작. 한 번 찍힌 옛 peak 만 점점 빨리 잊는다.
-#  - aqlrerm_tdec / pfe_tdec 변형에서만 활성화.
+#  - aqrerm_c_tdec / pfe_tdec 변형에서만 활성화.
 # =====================================================================
 TMAX_DECAY_COEF_DEFAULT = 1e-7  # ticks^-2 단위, params['tmax_decay_coef'] 로 override 가능
 
@@ -67,13 +67,13 @@ class Node:
         self.age_since_peak = 0
         # decay 활성 여부 (변형 알고리즘 한정)
         self.tmax_decay_enabled = algorithm in (
-            'aqlrerm_tdec', 'pfe_tdec', 'aqlrerm_c05_l0_tdec'
+            'aqrerm_c_tdec', 'pfe_tdec', 'aqrerm_c05_l0_tdec'
         )
         # decay 시작 tick — 0 이면 시뮬레이션 시작부터, memory_cut_tick 이면 절단 시점부터
-        # aqlrerm_c05_l0_tdec 만 link-cut 시점부터 Tdec 활성, 나머지는 0 (즉시)
+        # aqrerm_c05_l0_tdec 만 link-cut 시점부터 Tdec 활성, 나머지는 0 (즉시)
         self.tmax_decay_start_tick = (
             params.get('memory_cut_tick', 0)
-            if algorithm == 'aqlrerm_c05_l0_tdec' else 0
+            if algorithm == 'aqrerm_c05_l0_tdec' else 0
         )
 
         # PFE per-tick 포인트 적립 활성 여부 (변형 한정)
@@ -85,6 +85,9 @@ class Node:
             'pfe_c_pre_echo_tick_l0',
             'pfe_then_aqrerm',
             'pfe_pre_echo_tick',
+            'pfe_echo_tick',
+            'pfe_c_echo_tick',
+            'pfe_c_pre_echo_tick_no_L',
         )
 
         # ΔQ_min: 목적지별 직전 Q_min 저장
@@ -103,8 +106,11 @@ class Node:
             for d in range(num_nodes) if d != node_id
         }
 
-        # AQLRERM: echo 응답 시 받은 이웃 큐 길이 캐시 (실시간 직접 읽기 대체)
+        # AQRERM_c: echo 응답 시 받은 이웃 큐 길이 캐시 (실시간 직접 읽기 대체)
         self.last_known_queue = {n: 0 for n in neighbors}
+
+        # aqrerm_c_pre: 목적지별 이전 y* (random echo 시 무조건 포함)
+        self.last_y_star = {}
 
         # PFE: 누적 포인트 (Full Echo 사용 예산). 시작값은 모듈 상수 PFE_TOTAL_POINT_INITIAL.
         self.total_point = PFE_TOTAL_POINT_INITIAL
@@ -220,26 +226,33 @@ class Node:
             return self._route_aqrerm_l0(packet, current_tick, all_nodes)
         elif self.algorithm == 'aqrerm_no_mem':
             return self._route_aqrerm_no_mem(packet, current_tick, all_nodes)
-        elif self.algorithm == 'aqlrerm':
-            return self._route_aqlrerm(packet, current_tick, all_nodes)
-        elif self.algorithm == 'aqlrerm_tdec':
-            # AQLRERM_c=0.5 + T_max 가속 감쇠 — 라우팅 로직은 동일, T_max 관리만 다름
-            return self._route_aqlrerm(packet, current_tick, all_nodes)
-        elif self.algorithm == 'aqlrerm_c_ade':
-            # AQLRERM_c + Advantage-weighted eta2 (AdE)
+        elif self.algorithm == 'aqrerm_no_L':
+            # alias: AQRERM + Route Memory 완전 비활성 (aqrerm_no_mem 와 동일)
+            return self._route_aqrerm_no_mem(packet, current_tick, all_nodes)
+        elif self.algorithm == 'aqrerm_4000_no_L':
+            # alias: AQRERM + memory_cut_tick 이후 L=0 (main_compare_PFE_link_cut.py 의
+            # CUT_TICK=4000 기준 명명. 실제 전환 시점은 params['memory_cut_tick'] 값을 따름.)
+            return self._route_aqrerm_l0(packet, current_tick, all_nodes)
+        elif self.algorithm == 'aqrerm_c':
+            return self._route_aqrerm_c(packet, current_tick, all_nodes)
+        elif self.algorithm == 'aqrerm_c_tdec':
+            # AQRERM_c=0.5 + T_max 가속 감쇠 — 라우팅 로직은 동일, T_max 관리만 다름
+            return self._route_aqrerm_c(packet, current_tick, all_nodes)
+        elif self.algorithm == 'aqrerm_c_ade':
+            # AQRERM_c + Advantage-weighted eta2 (AdE)
             # echo_set 안의 비-y_star 만 차등 학습률, echo_set 밖은 기존 동작
-            return self._route_aqlrerm_c_ade(packet, current_tick, all_nodes)
-        elif self.algorithm == 'aqlrerm_c_ade_l0':
-            # AQLRERM_c_AdE + memory_cut_tick (보통 7000) 이후 L=0 강제 (link_cut 시나리오용)
-            return self._route_aqlrerm_c_ade_l0(packet, current_tick, all_nodes)
+            return self._route_aqrerm_c_ade(packet, current_tick, all_nodes)
+        elif self.algorithm == 'aqrerm_c_ade_l0':
+            # AQRERM_c_AdE + memory_cut_tick (보통 7000) 이후 L=0 강제 (link_cut 시나리오용)
+            return self._route_aqrerm_c_ade_l0(packet, current_tick, all_nodes)
         elif self.algorithm == 'pfe_tdec':
             # PFE + T_max 가속 감쇠 — 라우팅 로직은 동일, T_max 관리만 다름
             return self._route_pfe(packet, current_tick, all_nodes)
         elif self.algorithm == 'pfe_c':
-            # PFE + AQLRERM 식 큐 페널티 (c_q · last_known_queue) — params['c'] 그대로 사용
+            # PFE + AQRERM_c 식 큐 페널티 (c_q · last_known_queue) — params['c'] 그대로 사용
             return self._route_pfe_c(packet, current_tick, all_nodes)
         elif self.algorithm == 'pfe_c03':
-            # PFE_c 변형 — c=0.3 강제 (AQLRERM_c03 와 동일한 override 패턴)
+            # PFE_c 변형 — c=0.3 강제 (AQRERM_c03 와 동일한 override 패턴)
             return self._route_pfe_c03(packet, current_tick, all_nodes)
         elif self.algorithm == 'pfe_c05_l0':
             # PFE_c=0.5 + memory_cut_tick (보통 7000) 이후 L=0 강제
@@ -269,6 +282,33 @@ class Node:
             # PFE_c_pre_echo_tick 변형 — 큐 길이 항 (c · queue) 완전 제거.
             # 선택은 t / Q 만으로, 적립은 동일하게 tick 단위.
             return self._route_pfe_pre_echo_tick(packet, current_tick, all_nodes)
+        elif self.algorithm == 'pfe_echo_tick':
+            # select-first PFE — AQRERM 순서로 stale Q 선택 후 PFE 포인트 게이트 echo.
+            # 큐 페널티 c 없음.
+            return self._route_pfe_echo_tick(packet, current_tick, all_nodes)
+        elif self.algorithm == 'pfe_c_echo_tick':
+            # PFE_echo_tick + 선택 식에 c · last_known_queue 추가 (AQRERM_c 패턴).
+            return self._route_pfe_c_echo_tick(packet, current_tick, all_nodes)
+        elif self.algorithm == 'aqrerm_c_pre':
+            # AQRERM_c 의 pre-echo 변형 — 랜덤 echo (이전 y* 무조건 포함) 먼저 →
+            # fresh t + c · fresh queue 로 y* 선택 → 차등 update.
+            return self._route_aqrerm_c_pre(packet, current_tick, all_nodes)
+        elif self.algorithm == 'aqrerm_pre':
+            # AQRERM 의 pre-echo 변형 (c 없음) — 랜덤 echo (이전 y* 보장) →
+            # fresh t 만으로 y* 선택 → 차등 update.
+            return self._route_aqrerm_pre(packet, current_tick, all_nodes)
+        elif self.algorithm == 'fe_c_pre_echo':
+            # pfe_c_pre_echo_tick 에서 PFE 포인트 시스템 제거 — 매 라우팅 무조건 full echo.
+            return self._route_fe_c_pre_echo(packet, current_tick, all_nodes)
+        elif self.algorithm == 'pfe_c_pre_echo_tick_no_L':
+            # pfe_c_pre_echo_tick + L=0 강제 (Route Memory 완전 비활성).
+            # 기존 _l0 패턴과 동일하나 cut_tick 조건 없이 항상 L=0.
+            original_L = self.params['L']
+            self.params['L'] = 0
+            try:
+                return self._route_pfe_c_pre_echo_tick(packet, current_tick, all_nodes)
+            finally:
+                self.params['L'] = original_L
         elif self.algorithm == 'pfe_c_pre_echo_tick_l0':
             # PFE_c_pre_echo_Tick + memory_cut_tick (보통 7000) 이후 L=0 강제 (link_cut 시나리오용)
             return self._route_pfe_c_pre_echo_tick_l0(packet, current_tick, all_nodes)
@@ -292,35 +332,35 @@ class Node:
         elif self.algorithm == 'pfe_c10_ade_l0':
             # PFE_c_AdE_L0 변형 — c=1.0 강제
             return self._route_pfe_c_ade_l0(packet, current_tick, all_nodes, 1.0)
-        elif self.algorithm == 'aqlrerm_7000_no_mem':
-            return self._route_aqlrerm_7000_no_mem(packet, current_tick, all_nodes)
-        elif self.algorithm == 'aqlrerm_all_no_mem':
-            return self._route_aqlrerm_all_no_mem(packet, current_tick, all_nodes)
-        elif self.algorithm == 'aqlrerm_7000_no_c':
-            return self._route_aqlrerm_7000_no_c(packet, current_tick, all_nodes)
-        elif self.algorithm == 'aqlrerm_7000_one_c':
-            return self._route_aqlrerm_7000_one_c(packet, current_tick, all_nodes)
-        elif self.algorithm == 'aqlrerm_low_c':
-            return self._route_aqlrerm_low_c(packet, current_tick, all_nodes)
-        elif self.algorithm == 'aqlrerm_c03':
-            return self._route_aqlrerm_c03(packet, current_tick, all_nodes)
-        elif self.algorithm == 'aqlrerm_c07':
-            return self._route_aqlrerm_c07(packet, current_tick, all_nodes)
-        elif self.algorithm == 'aqlrerm_high_c':
-            return self._route_aqlrerm_high_c(packet, current_tick, all_nodes)
-        elif self.algorithm == 'aqlrerm_c01_l0':
-            return self._route_aqlrerm_c_l0(packet, current_tick, all_nodes, 0.1)
-        elif self.algorithm == 'aqlrerm_c03_l0':
-            return self._route_aqlrerm_c_l0(packet, current_tick, all_nodes, 0.3)
-        elif self.algorithm == 'aqlrerm_c05_l0':
-            return self._route_aqlrerm_c_l0(packet, current_tick, all_nodes, 0.5)
-        elif self.algorithm == 'aqlrerm_c05_l0_tdec':
+        elif self.algorithm == 'aqrerm_c_7000_no_mem':
+            return self._route_aqrerm_c_7000_no_mem(packet, current_tick, all_nodes)
+        elif self.algorithm == 'aqrerm_c_all_no_mem':
+            return self._route_aqrerm_c_all_no_mem(packet, current_tick, all_nodes)
+        elif self.algorithm == 'aqrerm_c_7000_no_c':
+            return self._route_aqrerm_c_7000_no_c(packet, current_tick, all_nodes)
+        elif self.algorithm == 'aqrerm_c_7000_one_c':
+            return self._route_aqrerm_c_7000_one_c(packet, current_tick, all_nodes)
+        elif self.algorithm == 'aqrerm_c_low_c':
+            return self._route_aqrerm_c_low_c(packet, current_tick, all_nodes)
+        elif self.algorithm == 'aqrerm_c03':
+            return self._route_aqrerm_c03(packet, current_tick, all_nodes)
+        elif self.algorithm == 'aqrerm_c07':
+            return self._route_aqrerm_c07(packet, current_tick, all_nodes)
+        elif self.algorithm == 'aqrerm_c_high_c':
+            return self._route_aqrerm_c_high_c(packet, current_tick, all_nodes)
+        elif self.algorithm == 'aqrerm_c01_l0':
+            return self._route_aqrerm_c_l0(packet, current_tick, all_nodes, 0.1)
+        elif self.algorithm == 'aqrerm_c03_l0':
+            return self._route_aqrerm_c_l0(packet, current_tick, all_nodes, 0.3)
+        elif self.algorithm == 'aqrerm_c05_l0':
+            return self._route_aqrerm_c_l0(packet, current_tick, all_nodes, 0.5)
+        elif self.algorithm == 'aqrerm_c05_l0_tdec':
             # c=0.5 + 7000 부터 L=0 + 7000 부터 Tdec — 라우팅은 동일 헬퍼, T_max 관리만 다름
-            return self._route_aqlrerm_c_l0(packet, current_tick, all_nodes, 0.5)
-        elif self.algorithm == 'aqlrerm_c07_l0':
-            return self._route_aqlrerm_c_l0(packet, current_tick, all_nodes, 0.7)
-        elif self.algorithm in ('aqlrerm_l_train', 'aqlrerm_l_close'):
-            return self._route_aqlrerm_l_train(packet, current_tick, all_nodes)
+            return self._route_aqrerm_c_l0(packet, current_tick, all_nodes, 0.5)
+        elif self.algorithm == 'aqrerm_c07_l0':
+            return self._route_aqrerm_c_l0(packet, current_tick, all_nodes, 0.7)
+        elif self.algorithm in ('aqrerm_c_l_train', 'aqrerm_c_l_close'):
+            return self._route_aqrerm_c_l_train(packet, current_tick, all_nodes)
         elif self.algorithm in ('learned_aqrerm', 'bandit_aqrerm'):
             return self._route_learned_aqrerm(packet, current_tick, all_nodes)
         else:
@@ -485,11 +525,11 @@ class Node:
         return y_star
 
     # -------------------------------------------------------------------------
-    # PFE_c — PFE 본체 + AQLRERM 식 큐 페널티
+    # PFE_c — PFE 본체 + AQRERM_c 식 큐 페널티
     # - y_star 선택: argmin (Q[dst][n] + c_q · last_known_queue[n])
     # - Full Echo 발동 시: 모든 이웃의 큐 길이 캐시 갱신 (echo piggyback)
     # - Q-routing 모드 (포인트 부족) 시: y_star 큐 길이만 갱신
-    # - c_q 는 params['c'] (AQLRERM 과 동일 키), c_pt 는 PFE 의 동적 가격 (별개)
+    # - c_q 는 params['c'] (AQRERM_c 과 동일 키), c_pt 는 PFE 의 동적 가격 (별개)
     # -------------------------------------------------------------------------
     def _route_pfe_c(self, packet, current_tick, all_nodes):
         # 0. 진단: 윈도우 라우팅 호출 카운트
@@ -501,7 +541,7 @@ class Node:
         gr    = self.params.get('pfe_gr', 0.1)
         b_max = self.params.get('pfe_b_max', 5.0)
         L     = self.params['L']
-        c_q   = self.params['c']  # AQLRERM 식 큐 페널티 계수 (PFE 의 c_pt 와 혼동 주의)
+        c_q   = self.params['c']  # AQRERM_c 식 큐 페널티 계수 (PFE 의 c_pt 와 혼동 주의)
 
         self.update_T_est()
 
@@ -522,7 +562,7 @@ class Node:
         if not candidates:
             candidates = self.neighbors
 
-        # y_star 선택 — AQLRERM 식 큐 페널티 포함
+        # y_star 선택 — AQRERM_c 식 큐 페널티 포함
         y_star = min(
             candidates,
             key=lambda n: self.Q[dst][n] + c_q * self.last_known_queue[n]
@@ -572,7 +612,7 @@ class Node:
         return y_star
 
     # -------------------------------------------------------------------------
-    # PFE_c03 — PFE_c 본체에서 c=0.3 강제 (AQLRERM_c03 와 동일한 override 패턴)
+    # PFE_c03 — PFE_c 본체에서 c=0.3 강제 (AQRERM_c03 와 동일한 override 패턴)
     # -------------------------------------------------------------------------
     def _route_pfe_c03(self, packet, current_tick, all_nodes):
         original_c = self.params['c']
@@ -584,7 +624,7 @@ class Node:
 
     # -------------------------------------------------------------------------
     # PFE_c_L0: PFE_c 에 c=c_value 고정 + memory_cut_tick (보통 7000) 이후 L=0 전환
-    # - AQLRERM_C{X}_L0 (_route_aqlrerm_c_l0) 와 동일한 override 패턴
+    # - AQRERM_C{X}_L0 (_route_aqrerm_c_l0) 와 동일한 override 패턴
     # - dispatcher 에서 c_value 인자로 0.3, 0.5 전달
     # - 모든 override 는 try/finally 로 즉시 원복
     # -------------------------------------------------------------------------
@@ -1048,6 +1088,402 @@ class Node:
         return y_star
 
     # -------------------------------------------------------------------------
+    # PFE_echo_Tick — select-first 구조의 PFE 변형 (echo 순서 뒤로).
+    # AQRERM 처럼 stale Q argmin 으로 y* 선택 → 그 다음 PFE 포인트 게이트 echo.
+    # - 포인트 충분 (total_point >= c_pt) : 모든 이웃 풀에코, y* η + 비-y* η2 update
+    # - 포인트 부족 : Q-routing fallback (y* 한 노드만 single echo, y* η update)
+    # 큐 페널티 c 는 안 씀 (선택 식이 stale Q 만).
+    # 적립은 simulator 의 tick_accumulate_point() 가 매 tick 담당.
+    # -------------------------------------------------------------------------
+    def _route_pfe_echo_tick(self, packet, current_tick, all_nodes):
+        self.pfe_window_route_count += 1
+
+        dst   = packet.dst
+        eta   = self.params['eta']
+        k     = self.params['k']
+        b_max = self.params.get('pfe_b_max', 1.0)
+        L     = self.params['L']
+
+        self.update_T_est()
+
+        R_x = self.T_est / self.T_max if self.T_max > 0 else 0.0
+
+        # PFE 동적 가격 (Full Echo 1 회 비용)
+        sale_pt = max(0.1, 1.0 - R_x)
+        c_pt = self.params.get('pfe_c', sale_pt)
+
+        q = current_tick - packet.queue_entry_tick
+        s = 1
+        eta2 = R_x * k
+
+        # Route Memory 필터
+        visited = set(packet.route_memory)
+        candidates = [n for n in self.neighbors if n not in visited]
+        if not candidates:
+            candidates = self.neighbors
+
+        # 선택: stale Q argmin (큐 항 없음) — AQRERM 패턴
+        y_star = min(candidates, key=lambda n: self.Q[dst][n])
+
+        if self.total_point >= c_pt:
+            # === 포인트 충분: 모든 이웃 풀에코 ===
+            self.total_point -= c_pt
+            self.pfe_window_full_echo_count += 1
+
+            t_values = {n: all_nodes[n].best_estimate(dst, exclude_node=self.id)
+                        for n in self.neighbors}
+            # 큐 길이도 같이 동기화 (진단/c 변형용)
+            for n in self.neighbors:
+                self.last_known_queue[n] = len(all_nodes[n].queue)
+
+            # y* η 로 강하게 갱신
+            if math.isfinite(t_values[y_star]):
+                self.Q[dst][y_star] += eta * (
+                    q + s + t_values[y_star] - self.Q[dst][y_star]
+                )
+            # 비-y* η2 로 약하게 갱신
+            for n in self.neighbors:
+                if n == y_star:
+                    continue
+                if math.isfinite(t_values[n]):
+                    self.Q[dst][n] += eta2 * (
+                        q + s + t_values[n] - self.Q[dst][n]
+                    )
+        else:
+            # === 포인트 부족: Q-routing fallback (y* 한 노드만 single echo) ===
+            t = all_nodes[y_star].best_estimate(dst, exclude_node=self.id)
+            self.last_known_queue[y_star] = len(all_nodes[y_star].queue)
+            self.Q[dst][y_star] += eta * (
+                q + s + t - self.Q[dst][y_star]
+            )
+
+        # Route Memory 갱신
+        if L == 0:
+            packet.route_memory = []
+        else:
+            new_memory = packet.route_memory + [self.id]
+            if len(new_memory) > L:
+                new_memory = new_memory[-L:]
+            packet.route_memory = new_memory
+
+        return y_star
+
+    # -------------------------------------------------------------------------
+    # PFE_c_echo_Tick — PFE_echo_tick 변형, 선택 식에 큐 페널티 c 추가.
+    # 선택: stale Q + c · last_known_queue (AQRERM_c 패턴)
+    # 나머지 흐름은 PFE_echo_tick 과 동일.
+    # -------------------------------------------------------------------------
+    def _route_pfe_c_echo_tick(self, packet, current_tick, all_nodes):
+        self.pfe_window_route_count += 1
+
+        dst   = packet.dst
+        eta   = self.params['eta']
+        k     = self.params['k']
+        b_max = self.params.get('pfe_b_max', 1.0)
+        L     = self.params['L']
+        c_q   = self.params['c']
+
+        self.update_T_est()
+
+        R_x = self.T_est / self.T_max if self.T_max > 0 else 0.0
+
+        # PFE 동적 가격 (Full Echo 1 회 비용)
+        sale_pt = max(0.1, 1.0 - R_x)
+        c_pt = self.params.get('pfe_c', sale_pt)
+
+        q = current_tick - packet.queue_entry_tick
+        s = 1
+        eta2 = R_x * k
+
+        # Route Memory 필터
+        visited = set(packet.route_memory)
+        candidates = [n for n in self.neighbors if n not in visited]
+        if not candidates:
+            candidates = self.neighbors
+
+        # 선택: stale Q + c · last_known_queue (AQRERM_c 패턴)
+        y_star = min(
+            candidates,
+            key=lambda n: self.Q[dst][n] + c_q * self.last_known_queue[n]
+        )
+
+        if self.total_point >= c_pt:
+            # === 포인트 충분: 모든 이웃 풀에코 ===
+            self.total_point -= c_pt
+            self.pfe_window_full_echo_count += 1
+
+            t_values = {n: all_nodes[n].best_estimate(dst, exclude_node=self.id)
+                        for n in self.neighbors}
+            for n in self.neighbors:
+                self.last_known_queue[n] = len(all_nodes[n].queue)
+
+            if math.isfinite(t_values[y_star]):
+                self.Q[dst][y_star] += eta * (
+                    q + s + t_values[y_star] - self.Q[dst][y_star]
+                )
+            for n in self.neighbors:
+                if n == y_star:
+                    continue
+                if math.isfinite(t_values[n]):
+                    self.Q[dst][n] += eta2 * (
+                        q + s + t_values[n] - self.Q[dst][n]
+                    )
+        else:
+            # === 포인트 부족: Q-routing fallback (y* 한 노드만 single echo) ===
+            t = all_nodes[y_star].best_estimate(dst, exclude_node=self.id)
+            self.last_known_queue[y_star] = len(all_nodes[y_star].queue)
+            self.Q[dst][y_star] += eta * (
+                q + s + t - self.Q[dst][y_star]
+            )
+
+        # Route Memory 갱신
+        if L == 0:
+            packet.route_memory = []
+        else:
+            new_memory = packet.route_memory + [self.id]
+            if len(new_memory) > L:
+                new_memory = new_memory[-L:]
+            packet.route_memory = new_memory
+
+        return y_star
+
+    # -------------------------------------------------------------------------
+    # FE_c_pre_echo — pfe_c_pre_echo_tick 에서 PFE 포인트 시스템 제거.
+    # 매 라우팅마다 무조건 full echo → fresh t + c · queue 로 y* 선택 →
+    # y* η, 비-y* η2 차등 update. fallback / 포인트 게이트 없음.
+    # AQFE + Route Memory + c 페널티 + pre-echo 선택의 조합.
+    # -------------------------------------------------------------------------
+    def _route_fe_c_pre_echo(self, packet, current_tick, all_nodes):
+        dst   = packet.dst
+        eta   = self.params['eta']
+        k     = self.params['k']
+        L     = self.params['L']
+        c_q   = self.params['c']
+
+        self.update_T_est()
+
+        R_x = self.T_est / self.T_max if self.T_max > 0 else 0.0
+
+        q = current_tick - packet.queue_entry_tick
+        s = 1
+        eta2 = R_x * k
+
+        # Route Memory 필터
+        visited = set(packet.route_memory)
+        candidates = [n for n in self.neighbors if n not in visited]
+        if not candidates:
+            candidates = self.neighbors
+
+        # 항상 full echo — 모든 이웃의 fresh t + fresh queue 수집
+        t_values = {n: all_nodes[n].best_estimate(dst, exclude_node=self.id)
+                    for n in self.neighbors}
+        for n in self.neighbors:
+            self.last_known_queue[n] = len(all_nodes[n].queue)
+
+        # 선택: fresh t + c · fresh queue (pre-echo 선택)
+        def _score(n):
+            if math.isfinite(t_values[n]):
+                return t_values[n] + c_q * self.last_known_queue[n]
+            else:
+                return float('inf')
+        y_star = min(candidates, key=_score)
+
+        # y* η 로 강하게 update
+        if math.isfinite(t_values[y_star]):
+            self.Q[dst][y_star] += eta * (
+                q + s + t_values[y_star] - self.Q[dst][y_star]
+            )
+        # 비-y* η2 로 약하게 update
+        for n in self.neighbors:
+            if n == y_star:
+                continue
+            if math.isfinite(t_values[n]):
+                self.Q[dst][n] += eta2 * (
+                    q + s + t_values[n] - self.Q[dst][n]
+                )
+
+        # Route Memory 갱신
+        if L == 0:
+            packet.route_memory = []
+        else:
+            new_memory = packet.route_memory + [self.id]
+            if len(new_memory) > L:
+                new_memory = new_memory[-L:]
+            packet.route_memory = new_memory
+
+        return y_star
+
+    # -------------------------------------------------------------------------
+    # AQRERM_c_pre — AQRERM_c 의 pre-echo 변형.
+    # 흐름:
+    #   1) random echo set 구성 (각 이웃 확률 p = R_x + 이전 y* 무조건 포함)
+    #   2) echo set 멤버에게서 fresh t, fresh queue 수집
+    #   3) Route Memory 필터 후, 선택: argmin (fresh t + c · fresh queue) (AQRERM_c 패턴)
+    #   4) y* η 로 update, 나머지 echo set η2 (= p · k) 로 update
+    #   5) 새 y* 를 self.last_y_star[dst] 에 저장 (다음 결정에서 echo set 에 보장)
+    # PFE 포인트 시스템 없음 (랜덤 echo 기반).
+    # -------------------------------------------------------------------------
+    def _route_aqrerm_c_pre(self, packet, current_tick, all_nodes):
+        dst = packet.dst
+        eta = self.params['eta']
+        k   = self.params['k']
+        L   = self.params['L']
+        c_q = self.params['c']
+
+        self.update_T_est()
+        p = self.T_est / self.T_max if self.T_max > 0 else 0.0
+
+        q = current_tick - packet.queue_entry_tick
+        s = 1
+        eta2 = p * k
+
+        # 1. Random echo set 구성
+        echo_set = set()
+        # 1-1. 이전 y* 항상 포함 (현재 neighbor 인 경우만)
+        prev_y = self.last_y_star.get(dst)
+        if prev_y is not None and prev_y in self.neighbors:
+            echo_set.add(prev_y)
+        # 1-2. 나머지 이웃은 확률 p 로 추가
+        for n in self.neighbors:
+            if n != prev_y and random.random() < p:
+                echo_set.add(n)
+        # 1-3. fallback: 비면 모든 이웃 포함 (첫 호출 + p≈0 인 경우)
+        if not echo_set:
+            echo_set = set(self.neighbors)
+
+        # 2. echo set 멤버의 fresh t, fresh queue 수집
+        t_values = {n: all_nodes[n].best_estimate(dst, exclude_node=self.id)
+                    for n in echo_set}
+        for n in echo_set:
+            self.last_known_queue[n] = len(all_nodes[n].queue)
+
+        # 3. Route Memory 필터 (echo set 안에서만)
+        visited = set(packet.route_memory)
+        candidates = [n for n in echo_set if n not in visited]
+        if not candidates:
+            candidates = list(echo_set)
+
+        # 4. 선택: argmin (fresh t + c · fresh queue)
+        def _score(n):
+            if math.isfinite(t_values[n]):
+                return t_values[n] + c_q * self.last_known_queue[n]
+            else:
+                return float('inf')
+        y_star = min(candidates, key=_score)
+
+        # 5. y* η 로 update
+        if math.isfinite(t_values[y_star]):
+            self.Q[dst][y_star] += eta * (
+                q + s + t_values[y_star] - self.Q[dst][y_star]
+            )
+        # 6. 나머지 echo set 멤버 η2 로 update
+        for n in echo_set:
+            if n == y_star:
+                continue
+            if math.isfinite(t_values[n]):
+                self.Q[dst][n] += eta2 * (
+                    q + s + t_values[n] - self.Q[dst][n]
+                )
+
+        # 7. 새 y* 저장
+        self.last_y_star[dst] = y_star
+
+        # 8. Route Memory 갱신
+        if L == 0:
+            packet.route_memory = []
+        else:
+            new_memory = packet.route_memory + [self.id]
+            if len(new_memory) > L:
+                new_memory = new_memory[-L:]
+            packet.route_memory = new_memory
+
+        return y_star
+
+    # -------------------------------------------------------------------------
+    # AQRERM_pre — AQRERM 의 pre-echo 변형 (c 없는 버전).
+    # _route_aqrerm_c_pre 과 동일하나 선택 식에서 c · queue 항만 제거.
+    # 흐름:
+    #   1) random echo set 구성 (각 이웃 확률 p = R_x + 이전 y* 무조건 포함)
+    #   2) echo set 멤버에게서 fresh t 수집
+    #   3) Route Memory 필터 후, 선택: argmin (fresh t) — c 페널티 없음
+    #   4) y* η 로 update, 나머지 echo set η2 (= p · k) 로 update
+    #   5) 새 y* 를 self.last_y_star[dst] 에 저장
+    # PFE 포인트 시스템 없음 (랜덤 echo 기반).
+    # -------------------------------------------------------------------------
+    def _route_aqrerm_pre(self, packet, current_tick, all_nodes):
+        dst = packet.dst
+        eta = self.params['eta']
+        k   = self.params['k']
+        L   = self.params['L']
+
+        self.update_T_est()
+        p = self.T_est / self.T_max if self.T_max > 0 else 0.0
+
+        q = current_tick - packet.queue_entry_tick
+        s = 1
+        eta2 = p * k
+
+        # 1. Random echo set 구성
+        echo_set = set()
+        # 1-1. 이전 y* 항상 포함 (현재 neighbor 인 경우만)
+        prev_y = self.last_y_star.get(dst)
+        if prev_y is not None and prev_y in self.neighbors:
+            echo_set.add(prev_y)
+        # 1-2. 나머지 이웃은 확률 p 로 추가
+        for n in self.neighbors:
+            if n != prev_y and random.random() < p:
+                echo_set.add(n)
+        # 1-3. fallback: 비면 모든 이웃 포함 (첫 호출 + p≈0 인 경우)
+        if not echo_set:
+            echo_set = set(self.neighbors)
+
+        # 2. echo set 멤버의 fresh t 수집 (queue 캐시는 안 갱신 — c 안 쓰니까 필요 없음)
+        t_values = {n: all_nodes[n].best_estimate(dst, exclude_node=self.id)
+                    for n in echo_set}
+
+        # 3. Route Memory 필터 (echo set 안에서만)
+        visited = set(packet.route_memory)
+        candidates = [n for n in echo_set if n not in visited]
+        if not candidates:
+            candidates = list(echo_set)
+
+        # 4. 선택: argmin (fresh t) — c 페널티 없음
+        def _score(n):
+            if math.isfinite(t_values[n]):
+                return t_values[n]
+            else:
+                return float('inf')
+        y_star = min(candidates, key=_score)
+
+        # 5. y* η 로 update
+        if math.isfinite(t_values[y_star]):
+            self.Q[dst][y_star] += eta * (
+                q + s + t_values[y_star] - self.Q[dst][y_star]
+            )
+        # 6. 나머지 echo set 멤버 η2 로 update
+        for n in echo_set:
+            if n == y_star:
+                continue
+            if math.isfinite(t_values[n]):
+                self.Q[dst][n] += eta2 * (
+                    q + s + t_values[n] - self.Q[dst][n]
+                )
+
+        # 7. 새 y* 저장
+        self.last_y_star[dst] = y_star
+
+        # 8. Route Memory 갱신
+        if L == 0:
+            packet.route_memory = []
+        else:
+            new_memory = packet.route_memory + [self.id]
+            if len(new_memory) > L:
+                new_memory = new_memory[-L:]
+            packet.route_memory = new_memory
+
+        return y_star
+
+    # -------------------------------------------------------------------------
     # PFE_c_pre_echo_Tick_L0 — _route_pfe_c_pre_echo_tick 본체 + memory_cut_tick 이후 L=0 강제.
     # link_cut 시나리오에서 cut 시점부터 Route Memory 무효화하면서도 매 tick 적립 유지.
     # -------------------------------------------------------------------------
@@ -1149,7 +1585,7 @@ class Node:
                 self.params['L'] = original_L
         else:
             return self._route_aqrerm(packet, current_tick, all_nodes)
-
+        
     # -------------------------------------------------------------------------
     # AQRERM_no_mem: AQRERM에서 Route Memory만 끈 변형 (디버깅용)
     # - 방문 노드 후보 제외 X
@@ -1185,11 +1621,11 @@ class Node:
         return y_star
 
     # -------------------------------------------------------------------------
-    # AQLRERM: AQRERM + 큐 길이 페널티를 라우팅 결정에 반영
+    # AQRERM_c: AQRERM + 큐 길이 페널티를 라우팅 결정에 반영
     # score(n) = Q[dst][n] + c * len(neighbor.queue)
     # Q 갱신식과 echo 메커니즘은 AQRERM과 동일
     # -------------------------------------------------------------------------
-    def _route_aqlrerm(self, packet, current_tick, all_nodes):
+    def _route_aqrerm_c(self, packet, current_tick, all_nodes):
         dst = packet.dst
         eta = self.params['eta']
         k = self.params['k']
@@ -1240,16 +1676,16 @@ class Node:
         return y_star
 
     # -------------------------------------------------------------------------
-    # AQLRERM_c_AdE — AQLRERM_c 본체 + Advantage-weighted eta2 (단순화 식)
+    # AQRERM_c_AdE — AQRERM_c 본체 + Advantage-weighted eta2 (단순화 식)
     #
     # PFE_c_AdE 와 같은 공식, 다만 적용 범위가 echo_set 안의 비-y_star 로 한정.
-    # echo_set 밖 이웃은 기존 AQLRERM 처럼 update X.
+    # echo_set 밖 이웃은 기존 AQRERM_c 처럼 update X.
     # echo_set 가 {y_star} 만 있으면 (낮은 R_x) AdE 효과 0 — 자연스러운 부하 의존성.
     #
     # η₂,n = clip(η₂_base + α · (Score_y* − Score_n),  η_floor,  η)
-    #   η₂_base = p · η · k  (= R_x · η · k, 기존 AQLRERM eta2)
+    #   η₂_base = p · η · k  (= R_x · η · k, 기존 AQRERM_c eta2)
     # -------------------------------------------------------------------------
-    def _route_aqlrerm_c_ade(self, packet, current_tick, all_nodes):
+    def _route_aqrerm_c_ade(self, packet, current_tick, all_nodes):
         dst = packet.dst
         eta = self.params['eta']
         k = self.params['k']
@@ -1277,7 +1713,7 @@ class Node:
 
         eta2_base = p * k
 
-        # echo_set 확률적 선택 (기존 AQLRERM 그대로)
+        # echo_set 확률적 선택 (기존 AQRERM_c 그대로)
         echo_set = {y_star}
         for n in self.neighbors:
             if n != y_star and random.random() < p:
@@ -1329,30 +1765,30 @@ class Node:
         return y_star
 
     # -------------------------------------------------------------------------
-    # AQLRERM_c_AdE_L0 — AQLRERM_c_AdE 본체 + memory_cut_tick (보통 7000) 이후 L=0 강제.
+    # AQRERM_c_AdE_L0 — AQRERM_c_AdE 본체 + memory_cut_tick (보통 7000) 이후 L=0 강제.
     # link_cut 시나리오용 — c 는 params['c'] (main_link_cut.py 에서 0.5) 그대로.
     # -------------------------------------------------------------------------
-    def _route_aqlrerm_c_ade_l0(self, packet, current_tick, all_nodes):
+    def _route_aqrerm_c_ade_l0(self, packet, current_tick, all_nodes):
         cut_tick = self.params.get('memory_cut_tick', 0)
         if current_tick >= cut_tick:
             original_L = self.params['L']
             self.params['L'] = 0
             try:
-                return self._route_aqlrerm_c_ade(packet, current_tick, all_nodes)
+                return self._route_aqrerm_c_ade(packet, current_tick, all_nodes)
             finally:
                 self.params['L'] = original_L
         else:
-            return self._route_aqlrerm_c_ade(packet, current_tick, all_nodes)
+            return self._route_aqrerm_c_ade(packet, current_tick, all_nodes)
 
     # -------------------------------------------------------------------------
-    # AQLRERM_no_mem: 디버깅용
-    # - current_tick < memory_cut_tick: 일반 AQLRERM 그대로 (L = params['L'])
+    # AQRERM_c_no_mem: 디버깅용
+    # - current_tick < memory_cut_tick: 일반 AQRERM_c 그대로 (L = params['L'])
     # - current_tick >= memory_cut_tick: effective L = 0 으로 route memory 무효화
     #   * visited 필터링 비활성화 (모든 이웃이 후보)
     #   * packet.route_memory 항상 빈 리스트로 유지
     #   (best_estimate의 exclude_node=self.id 효과는 그대로 유지)
     # -------------------------------------------------------------------------
-    def _route_aqlrerm_7000_no_mem(self, packet, current_tick, all_nodes):
+    def _route_aqrerm_c_7000_no_mem(self, packet, current_tick, all_nodes):
         # memory_cut_tick (보통 7000) 이전엔 L=params['L'], 이후엔 L=0 으로 전환
         dst = packet.dst
         eta = self.params['eta']
@@ -1403,12 +1839,12 @@ class Node:
         return y_star
 
     # -------------------------------------------------------------------------
-    # AQLRERM_ALL_NO_MEM: 시뮬레이션 시작부터 끝까지 L=0 (route memory 영구 비활성)
+    # AQRERM_c_ALL_NO_MEM: 시뮬레이션 시작부터 끝까지 L=0 (route memory 영구 비활성)
     # - memory_cut_tick 분기 없음 — 항상 L=0
     # - packet.route_memory 항상 빈 리스트, visited 필터링 의미 없음
-    # - 그 외 echo, Q 업데이트, last_known_queue 캐싱은 AQLRERM 본체 그대로
+    # - 그 외 echo, Q 업데이트, last_known_queue 캐싱은 AQRERM_c 본체 그대로
     # -------------------------------------------------------------------------
-    def _route_aqlrerm_all_no_mem(self, packet, current_tick, all_nodes):
+    def _route_aqrerm_c_all_no_mem(self, packet, current_tick, all_nodes):
         dst = packet.dst
         eta = self.params['eta']
         k = self.params['k']
@@ -1451,97 +1887,97 @@ class Node:
         return y_star
 
     # -------------------------------------------------------------------------
-    # AQLRERM_7000_NO_C: memory_cut_tick (보통 7000) 이전엔 일반 AQLRERM
+    # AQRERM_c_7000_NO_C: memory_cut_tick (보통 7000) 이전엔 일반 AQRERM_c
     # (c=params['c'], L=params['L']), 이후엔 c=0 + L=0 강제.
     #   - c=0: 큐 페널티 비활성화 (AQRERM 비슷한 큐 무시 라우팅)
     #   - L=0: route memory 비활성화 (방문 노드 필터링 X, 빈 리스트 유지)
     # 한 라우팅 결정 동안만 self.params['c']/['L'] 을 잠시 override 후
-    # _route_aqlrerm 호출 → try/finally 로 즉시 원복하여 다른 노드 라우팅에 영향 없음.
+    # _route_aqrerm_c 호출 → try/finally 로 즉시 원복하여 다른 노드 라우팅에 영향 없음.
     # -------------------------------------------------------------------------
-    def _route_aqlrerm_7000_no_c(self, packet, current_tick, all_nodes):
+    def _route_aqrerm_c_7000_no_c(self, packet, current_tick, all_nodes):
         cut_tick = self.params.get('memory_cut_tick', 0)
         if current_tick < cut_tick:
-            return self._route_aqlrerm(packet, current_tick, all_nodes)
+            return self._route_aqrerm_c(packet, current_tick, all_nodes)
         original_c = self.params['c']
         original_L = self.params['L']
         self.params['c'] = 0.0
         self.params['L'] = 0
         try:
-            return self._route_aqlrerm(packet, current_tick, all_nodes)
+            return self._route_aqrerm_c(packet, current_tick, all_nodes)
         finally:
             self.params['c'] = original_c
             self.params['L'] = original_L
 
     # -------------------------------------------------------------------------
-    # AQLRERM_7000_ONE_C: memory_cut_tick 이전엔 일반 AQLRERM, 이후엔 c=1 + L=0 강제
+    # AQRERM_c_7000_ONE_C: memory_cut_tick 이전엔 일반 AQRERM_c, 이후엔 c=1 + L=0 강제
     #   - c=1: 큐 페널티 강화 (기존 0.5 의 두 배, 부하 분산 더 적극적)
     #   - L=0: route memory 비활성화
     # -------------------------------------------------------------------------
-    def _route_aqlrerm_7000_one_c(self, packet, current_tick, all_nodes):
+    def _route_aqrerm_c_7000_one_c(self, packet, current_tick, all_nodes):
         cut_tick = self.params.get('memory_cut_tick', 0)
         if current_tick < cut_tick:
-            return self._route_aqlrerm(packet, current_tick, all_nodes)
+            return self._route_aqrerm_c(packet, current_tick, all_nodes)
         original_c = self.params['c']
         original_L = self.params['L']
         self.params['c'] = 3.0
         self.params['L'] = 0
         try:
-            return self._route_aqlrerm(packet, current_tick, all_nodes)
+            return self._route_aqrerm_c(packet, current_tick, all_nodes)
         finally:
             self.params['c'] = original_c
             self.params['L'] = original_L
 
     # -------------------------------------------------------------------------
-    # AQLRERM_LOW_C: 시뮬레이션 전체 구간에서 c=0.1 고정 (큐 페널티 약하게)
-    # 일반 AQLRERM 로직 그대로, c 값만 매 라우팅마다 0.1 로 override.
+    # AQRERM_c_LOW_C: 시뮬레이션 전체 구간에서 c=0.1 고정 (큐 페널티 약하게)
+    # 일반 AQRERM_c 로직 그대로, c 값만 매 라우팅마다 0.1 로 override.
     # -------------------------------------------------------------------------
-    def _route_aqlrerm_low_c(self, packet, current_tick, all_nodes):
+    def _route_aqrerm_c_low_c(self, packet, current_tick, all_nodes):
         original_c = self.params['c']
         self.params['c'] = 0.1
         try:
-            return self._route_aqlrerm(packet, current_tick, all_nodes)
+            return self._route_aqrerm_c(packet, current_tick, all_nodes)
         finally:
             self.params['c'] = original_c
 
     # -------------------------------------------------------------------------
-    # AQLRERM_C03: 시뮬레이션 전체 구간에서 c=0.3 고정
+    # AQRERM_C03: 시뮬레이션 전체 구간에서 c=0.3 고정
     # -------------------------------------------------------------------------
-    def _route_aqlrerm_c03(self, packet, current_tick, all_nodes):
+    def _route_aqrerm_c03(self, packet, current_tick, all_nodes):
         original_c = self.params['c']
         self.params['c'] = 0.3
         try:
-            return self._route_aqlrerm(packet, current_tick, all_nodes)
+            return self._route_aqrerm_c(packet, current_tick, all_nodes)
         finally:
             self.params['c'] = original_c
 
     # -------------------------------------------------------------------------
-    # AQLRERM_C07: 시뮬레이션 전체 구간에서 c=0.7 고정
+    # AQRERM_C07: 시뮬레이션 전체 구간에서 c=0.7 고정
     # -------------------------------------------------------------------------
-    def _route_aqlrerm_c07(self, packet, current_tick, all_nodes):
+    def _route_aqrerm_c07(self, packet, current_tick, all_nodes):
         original_c = self.params['c']
         self.params['c'] = 0.7
         try:
-            return self._route_aqlrerm(packet, current_tick, all_nodes)
+            return self._route_aqrerm_c(packet, current_tick, all_nodes)
         finally:
             self.params['c'] = original_c
 
     # -------------------------------------------------------------------------
-    # AQLRERM_HIGH_C: 시뮬레이션 전체 구간에서 c=1.0 고정 (큐 페널티 강하게)
+    # AQRERM_c_HIGH_C: 시뮬레이션 전체 구간에서 c=1.0 고정 (큐 페널티 강하게)
     # -------------------------------------------------------------------------
-    def _route_aqlrerm_high_c(self, packet, current_tick, all_nodes):
+    def _route_aqrerm_c_high_c(self, packet, current_tick, all_nodes):
         original_c = self.params['c']
         self.params['c'] = 1.0
         try:
-            return self._route_aqlrerm(packet, current_tick, all_nodes)
+            return self._route_aqrerm_c(packet, current_tick, all_nodes)
         finally:
             self.params['c'] = original_c
 
     # -------------------------------------------------------------------------
-    # AQLRERM_C{X}_L0: c=c_value 로 고정 + memory_cut_tick (보통 7000) 이후 L=0 전환
+    # AQRERM_C{X}_L0: c=c_value 로 고정 + memory_cut_tick (보통 7000) 이후 L=0 전환
     # - 헬퍼 메서드. dispatcher 에서 c_value 인자로 0.1, 0.3, 0.5, 0.7 전달.
     # - 모든 override 는 try/finally 로 즉시 원복.
     # -------------------------------------------------------------------------
-    def _route_aqlrerm_c_l0(self, packet, current_tick, all_nodes, c_value):
+    def _route_aqrerm_c_l0(self, packet, current_tick, all_nodes, c_value):
         cut_tick = self.params.get('memory_cut_tick', 0)
         original_c = self.params['c']
         self.params['c'] = c_value
@@ -1550,27 +1986,27 @@ class Node:
             original_L = self.params['L']
             self.params['L'] = 0
             try:
-                return self._route_aqlrerm(packet, current_tick, all_nodes)
+                return self._route_aqrerm_c(packet, current_tick, all_nodes)
             finally:
                 self.params['c'] = original_c
                 self.params['L'] = original_L
         else:
             # 절단 이전: c 만 override, L 은 원래 값 유지
             try:
-                return self._route_aqlrerm(packet, current_tick, all_nodes)
+                return self._route_aqrerm_c(packet, current_tick, all_nodes)
             finally:
                 self.params['c'] = original_c
 
     # -------------------------------------------------------------------------
-    # AQLRERM_L_TRAIN: AQLRERM과 동일하되 route memory size L 을 글로벌 학습으로 결정
-    # - y_star 선택: AQLRERM의 큐 페널티 (Q + c * last_known_queue)
-    # - echo 확률 p: AQLRERM의 표준 p = T_est / T_max
+    # AQRERM_c_L_TRAIN: AQRERM_c과 동일하되 route memory size L 을 글로벌 학습으로 결정
+    # - y_star 선택: AQRERM_c의 큐 페널티 (Q + c * last_known_queue)
+    # - echo 확률 p: AQRERM_c의 표준 p = T_est / T_max
     # - L: simulator 가 매 stat_interval 마다 글로벌 state 로 sampling 해서
     #      controller.cached_L 에 박아둔 값을 그대로 사용 (window 동안 일정)
     # - td_error_ema 만 글로벌 state 의 avg_TD_error 계산용으로 유지 갱신
     # - 그 외 보조 변수 (prev_Q_min, y_star_history, last_echo_tick) 는 갱신 생략
     # -------------------------------------------------------------------------
-    def _route_aqlrerm_l_train(self, packet, current_tick, all_nodes):
+    def _route_aqrerm_c_l_train(self, packet, current_tick, all_nodes):
         dst = packet.dst
         eta = self.params['eta']
         k = self.params['k']
@@ -1585,7 +2021,7 @@ class Node:
         # L_history 누적 (per-routing 단위 진단 로그용)
         controller.L_history.append(L)
 
-        # --- 이하 AQLRERM 본체와 동일 ---
+        # --- 이하 AQRERM_c 본체와 동일 ---
         visited = set(packet.route_memory)
         candidates = [n for n in self.neighbors if n not in visited]
         if not candidates:

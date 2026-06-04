@@ -3,9 +3,9 @@ import random
 import numpy as np
 from node import Node, Packet
 from echo_controller import EchoController, LTrainController, LCloseController
-from bandit_controller import BanditController
+# from bandit_controller import BanditController
 
-# aqlrerm_l_train 전용 reward shaping 가중치
+# aqrerm_c_l_train 전용 reward shaping 가중치
 # score = d_window + BETA_QUEUE * total_qlen + GAMMA_PEND * pending_count
 # reward = (prev_score - score) / max(prev_score, 1e-6)
 BETA_QUEUE = 1
@@ -29,13 +29,13 @@ class Simulator:
         if algorithm == 'learned_aqrerm':
             self.controller = EchoController()
             self.params['controller'] = self.controller
-        elif algorithm == 'bandit_aqrerm':
-            self.controller = BanditController()
-            self.params['controller'] = self.controller
-        elif algorithm == 'aqlrerm_l_train':
+        # elif algorithm == 'bandit_aqrerm':
+        #     self.controller = BanditController()
+        #     self.params['controller'] = self.controller
+        elif algorithm == 'aqrerm_c_l_train':
             self.controller = LTrainController()
             self.params['controller'] = self.controller
-        elif algorithm == 'aqlrerm_l_close':
+        elif algorithm == 'aqrerm_c_l_close':
             self.controller = LCloseController()
             self.params['controller'] = self.controller
         else:
@@ -191,7 +191,7 @@ class Simulator:
 
         # 시뮬레이션 시작 전, learned_aqrerm의 prev_state 초기화
         prev_d_window = None
-        prev_score    = None   # aqlrerm_l_train 전용 composite score 추적
+        prev_score    = None   # aqrerm_c_l_train 전용 composite score 추적
 
         # 글로벌 state 의 delta 항목 계산용 (이전 window 값 기억)
         prev_total_qlen    = 0
@@ -226,7 +226,7 @@ class Simulator:
 
                 # 라우팅 결정! (다음 홉 반환)
                 # 다음 홉은 node.route()에서 알고리즘별로 결정하여 반환
-                # aqlrerm_l_train 의 결정 로직 : 컨트롤러가 선택한 L에 따라 ADT 예측값이 가장 근접한 이웃을 다음 홉으로 선택
+                # aqrerm_c_l_train 의 결정 로직 : 컨트롤러가 선택한 L에 따라 ADT 예측값이 가장 근접한 이웃을 다음 홉으로 선택
                 next_hop = node.route(pkt, tick, self.nodes) 
 
                 # 목적지에 도착하면 전달 시간 계산하여 window_delivered에 추가, 아니면 다음 홉으로 이동
@@ -246,8 +246,8 @@ class Simulator:
 
             # 2.5 T_max 가속 감쇠 — 모든 노드 매 tick (decay 비활성 노드는 즉시 no-op)
             # 라우팅 안 한 노드의 T_max 도 부드럽게 낮춰야 high-watermark 문제 해소됨
-            # current_tick 전달: aqlrerm_c05_l0_tdec 처럼 특정 시점부터 활성화되는 변형 지원
-            # 특정 알고리즘 변형 (aqlrerm_tdec, pfe_tdec, aqlrerm_c05_l0_tdec) 에서만 활성화되고, 나머지는 호출되어도 즉시 return
+            # current_tick 전달: aqrerm_c05_l0_tdec 처럼 특정 시점부터 활성화되는 변형 지원
+            # 특정 알고리즘 변형 (aqrerm_c_tdec, pfe_tdec, aqrerm_c05_l0_tdec) 에서만 활성화되고, 나머지는 호출되어도 즉시 return
             for node in self.nodes:
                 node.tick_decay_tmax(tick)
 
@@ -357,7 +357,7 @@ class Simulator:
                 #     self.controller.train(reward, next_state)
 
                 if self.controller is not None:
-                    if self.algorithm in ('aqlrerm_l_train', 'aqlrerm_l_close'):
+                    if self.algorithm in ('aqrerm_c_l_train', 'aqrerm_c_l_close'):
 
                         # 현재까지 네트워크에 남아 있는 패킷 수
                         pending_count = total_generated - total_delivered
@@ -400,7 +400,7 @@ class Simulator:
                         # 1) 글로벌 state 로 다음 window 의 L 을 먼저 sampling
                         #    (train 보다 먼저 호출해야 latest_state 가 fresh 한 상태로
                         #     train 의 advantage 계산에 들어감)
-                        if self.algorithm == 'aqlrerm_l_train':
+                        if self.algorithm == 'aqrerm_c_l_train':
                             global_state = self._build_global_state(
                                 d_window, total_qlen, pending_count,
                                 total_generated, total_delivered,
@@ -418,7 +418,7 @@ class Simulator:
                         # close 전용: 적응형 stress 판정 + cached_L 갱신
                         # update_stress 가 (d_window, total_qlen, pending_count) 로 instability 계산,
                         # set_window_L 이 새로 갱신된 stressed flag 로 cached_L = L_NORMAL or L_STRESS 결정
-                        if self.algorithm == 'aqlrerm_l_close':
+                        if self.algorithm == 'aqrerm_c_l_close':
                             self.controller.update_stress(d_window, total_qlen, pending_count)
                             self.controller.set_window_L(None, tick + 1)
 

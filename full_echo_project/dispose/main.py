@@ -4,11 +4,12 @@ import matplotlib
 matplotlib.use('Agg')  # GUI 없이 파일로만 저장
 import matplotlib.pyplot as plt
 from simulator import Simulator
-from topology_nsfnet import NUM_NODES as NSFNET_NUM_NODES, ADJACENCY as NSFNET_ADJACENCY
+from topology_grid import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACENCY
 
 SEED = 100
 
-TOPOLOGY_NSFNET = {'num_nodes': NSFNET_NUM_NODES, 'adjacency': NSFNET_ADJACENCY}
+
+TOPOLOGY_GRID = {'num_nodes': GRID_NUM_NODES, 'adjacency': GRID_ADJACENCY}
 
 # -------------------------------------------------------------------------
 # 파라미터 설정 (AQRERM 논문 기준)
@@ -23,14 +24,14 @@ ALGORITHMS = [
     'q_routing',
     'aqfe',
     'aqrerm',
-    # 'aqlrerm_c03',
-    # 'aqlrerm',
-    # 'aqlrerm_tdec',
+    # 'aqrerm_c03',
+    # 'aqrerm_c',
+    # 'aqrerm_c_tdec',
     # 'pfe',
     # 'pfe_tdec',
     # 'pfe_ppc',
     # 'pfe_c03',
-    # 'aqlrerm_c_ade',
+    # 'aqrerm_c_ade',
     # 'pfe_c_ade',
     # 'pfe_c_pre_echo',
     'pfe_c_pre_echo_tick',  # ★ 변형: 라우팅 안 해도 매 tick gr 적립 (idle 노드도 포인트 누적)
@@ -38,22 +39,21 @@ ALGORITHMS = [
     # 'pfe_then_aqrerm',      # ★ Hybrid: switch_tick 까지 PFE_c_pre_echo_tick, 이후 AQRERM
     ]
 LABELS = {'q_routing': 'Q-routing', 'aqfe': 'AQFE', 'aqrerm': 'AQRERM',
-          'aqlrerm': 'AQLRERM_c',
-          'aqlrerm_tdec': 'AQLRERM_c=0.5_Tdec',
-          'aqlrerm_low_c': 'AQLRERM_c=0.1',
-          'aqlrerm_c03':   'AQLRERM_c=0.3',
-          'aqlrerm_c07':   'AQLRERM_c=0.7',
-          'aqlrerm_high_c': 'AQLRERM_c=1.0',
-          'aqlrerm_c05_l0': 'AQLRERM_C=0.5_L=0',  # c=0.5, L=0 (memory_cut_tick 없으면 전 구간 L=0)
-          'aqlrerm_7000_no_mem': 'AQLRERM_7000_NO_MEM',
-          'aqlrerm_all_no_mem': 'AQLRERM_ALL_NO_MEM',
-          'aqlrerm_l_train': 'AQLRERM_L_TRAIN',
-          'aqlrerm_l_close': 'AQLRERM_L_CLOSE',
+          'aqrerm_c': 'AQRERM_c',
+          'aqrerm_c_tdec': 'AQRERM_c=0.5_Tdec',
+          'aqrerm_c_low_c': 'AQRERM_c=0.1',
+          'aqrerm_c03':   'AQRERM_c=0.3',
+          'aqrerm_c07':   'AQRERM_c=0.7',
+          'aqrerm_c_high_c': 'AQRERM_c=1.0',
+          'aqrerm_c_7000_no_mem': 'AQRERM_c_7000_NO_MEM',
+          'aqrerm_c_all_no_mem': 'AQRERM_c_ALL_NO_MEM',
+          'aqrerm_c_l_train': 'AQRERM_c_L_TRAIN',
+          'aqrerm_c_l_close': 'AQRERM_c_L_CLOSE',
           'pfe': 'PFE',
           'pfe_tdec': 'PFE_Tdec',
           'pfe_c':    'PFE_c=0.5',
           'pfe_c03':  'PFE_c=0.3',
-          'aqlrerm_c_ade': 'AQLRERM_c=0.5_AdE',
+          'aqrerm_c_ade': 'AQRERM_c=0.5_AdE',
           'pfe_c_ade':     'PFE_c=0.5_AdE',
           'pfe_c_pre_echo': 'PFE_c_PreEcho',
           'pfe_c_pre_echo_tick': 'PFE_c_PreEcho_Tick',
@@ -63,9 +63,9 @@ LABELS = {'q_routing': 'Q-routing', 'aqfe': 'AQFE', 'aqrerm': 'AQRERM',
 COLORS = {'q_routing': 'blue', 'aqfe': 'orange',
           # === 활성화 변형: family 별 hue 분리, c 값 따라 톤 차이 ===
           'aqrerm':         'navy',               # 기준선 — 차가운 단일색
-          'aqlrerm':        'darkorange',         # AQLRERM family (오렌지) — c=0.5
-          'aqlrerm_c03':    'gold',               # AQLRERM family — c=0.3 (밝은 오렌지)
-          'aqlrerm_c_ade':  'green',              # AQLRERM + AdE — family 와 구분
+          'aqrerm_c':        'darkorange',         # AQRERM_c family (오렌지) — c=0.5
+          'aqrerm_c03':    'gold',               # AQRERM_c family — c=0.3 (밝은 오렌지)
+          'aqrerm_c_ade':  'green',              # AQRERM_c + AdE — family 와 구분
           'pfe_c':          'red',                # PFE family (빨강) — c=0.5
           'pfe_c03':        'lightcoral',         # PFE family — c=0.3 (밝은 빨강)
           'pfe_c_ade':      'magenta',            # PFE + AdE — family 와 구분
@@ -75,15 +75,14 @@ COLORS = {'q_routing': 'blue', 'aqfe': 'orange',
           'pfe_then_aqrerm': 'darkgreen',      # Hybrid — 두 family 와 명확히 구분되는 녹색
 
           # === 비활성화 변형: 기존 매핑 유지 ===
-          'aqlrerm_tdec':   'skyblue',
-          'aqlrerm_low_c':  'chocolate',
-          'aqlrerm_c07':    'magenta',
-          'aqlrerm_high_c': 'darkmagenta',
-          'aqlrerm_c05_l0': 'crimson',            # c=0.5 + L=0
-          'aqlrerm_7000_no_mem': 'cyan',
-          'aqlrerm_all_no_mem': 'teal',
-          'aqlrerm_l_train': 'black',
-          'aqlrerm_l_close': 'olive',
+          'aqrerm_c_tdec':   'skyblue',
+          'aqrerm_c_low_c':  'chocolate',
+          'aqrerm_c07':    'magenta',
+          'aqrerm_c_high_c': 'darkmagenta',
+          'aqrerm_c_7000_no_mem': 'cyan',
+          'aqrerm_c_all_no_mem': 'teal',
+          'aqrerm_c_l_train': 'black',
+          'aqrerm_c_l_close': 'olive',
           'pfe':            'black',
           'pfe_tdec':       'crimson',
           'learned_aqrerm': 'brown', 'bandit_aqrerm': 'purple'}
@@ -92,15 +91,20 @@ STAT_INTERVAL = 200
 
 # c-sweep 설정
 C_VALUES = [0.22]
-MD_PATH = 'result_nsfnet.md'
+MD_PATH = 'result_grid.md'
 
 EXPERIMENTS = [
-    {'lam': 1,   'total_ticks': 40000,  'title': 'λ=1'},
-    {'lam': 2,   'total_ticks': 40000,  'title': 'λ=2'},
-    {'lam': 3,   'total_ticks': 40000, 'title': 'λ=3'},
-    {'lam': 3.5, 'total_ticks': 40000, 'title': 'λ=3.5'},
-    {'lam': 3.7, 'total_ticks': 40000, 'title': 'λ=3.7'},
-    # {'lam': 4.0, 'total_ticks': 14000, 'title': 'λ=4.0'},
+    # {'lam': 1,   'total_ticks': 40000,  'title': 'λ=1'},
+    # {'lam': 2,   'total_ticks': 40000,  'title': 'λ=2'},
+    # {'lam': 3,   'total_ticks': 40000, 'title': 'λ=3'},
+    {'lam': 3.5, 'total_ticks': 80000, 'title': 'λ=3.5'},
+    # {'lam': 3.7, 'total_ticks': 40000, 'title': 'λ=3.7'},
+    # {'lam': 3.8, 'total_ticks': 40000, 'title': 'λ=3.8'},
+    # {'lam': 3.9, 'total_ticks': 40000, 'title': 'λ=3.9'},
+    # {'lam': 4.0, 'total_ticks': 40000, 'title': 'λ=4.0'},
+    # {'lam': 4.1, 'total_ticks': 40000, 'title': 'λ=4.1'},
+    # {'lam': 4.2, 'total_ticks': 40000, 'title': 'λ=4.2'},
+    # {'lam': 4.3, 'total_ticks': 40000, 'title': 'λ=4.3'},
 ]
 
 
@@ -114,7 +118,7 @@ def run_one_c(c, md_file):
 
     fig, axes = plt.subplots(1, len(EXPERIMENTS), figsize=(60, 8), squeeze=False)
     axes = axes.flatten()  # EXPERIMENTS 가 1 개여도 1D 배열로 유지
-    fig.suptitle(f"NSFNET (c={c}, L={L}, seed={SEED})")
+    fig.suptitle(f"6x6 Grid (c={c}, L={L}, seed={SEED})")
 
     md_file.write(f"## c = {c}\n\n")
 
@@ -133,7 +137,7 @@ def run_one_c(c, md_file):
             np.random.seed(SEED)
             print(f"  Running {LABELS[algo]}...")
 
-            sim = Simulator(algorithm=algo, params=params, seed=SEED, topology=TOPOLOGY_NSFNET)
+            sim = Simulator(algorithm=algo, params=params, seed=SEED, topology=TOPOLOGY_GRID)
             adt = sim.run(lam=lam, total_ticks=total_ticks, stat_interval=STAT_INTERVAL)
 
             gen, dlv, und = sim.total_generated, sim.total_delivered, sim.undelivered_count
@@ -143,11 +147,12 @@ def run_one_c(c, md_file):
             md_file.write(f"| {LABELS[algo]} | {gen} | {dlv} | {und} | {rate:.1f}% |\n")
 
             # ---- T_est / T_max 1000-tick 간격 평균 (시간 흐름 진단) ----
+            # 각 experiment 의 total_ticks 가 다르므로 chunk 수는 total_ticks/1000 으로 자동 계산
             t_est_series = getattr(sim, 't_est_series', None)
             t_max_series = getattr(sim, 't_max_series', None)
             if t_est_series and t_max_series:
-                n_chunks   = max(1, total_ticks // 1000)
-                chunk_size = max(1, len(t_est_series) // n_chunks)
+                n_chunks   = max(1, total_ticks // 1000)            # 1000 tick 마다 1 chunk
+                chunk_size = max(1, len(t_est_series) // n_chunks)  # chunk 당 entry 수 (= 10 if stat_interval=100)
                 t_est_chunks = [
                     float(np.mean(t_est_series[i:i + chunk_size]))
                     for i in range(0, chunk_size * n_chunks, chunk_size)
@@ -187,7 +192,7 @@ def run_one_c(c, md_file):
         ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    filename = f"result_nsfnet_c_{c}.png"
+    filename = f"result_grid_c_{c}.png"
     plt.savefig(filename, dpi=150)
     print(f"결과 저장: {filename}")
     plt.close()
@@ -195,7 +200,7 @@ def run_one_c(c, md_file):
 
 if __name__ == '__main__':
     with open(MD_PATH, 'w', encoding='utf-8') as md:
-        md.write('# NSFNET c-sweep\n\n')
+        md.write('# 6x6 Grid c-sweep\n\n')
         for c in C_VALUES:
             run_one_c(c, md)
     print(f"\n모든 c-sweep 완료. 로그: {MD_PATH}")

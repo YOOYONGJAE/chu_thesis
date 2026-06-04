@@ -16,7 +16,7 @@ TOPOLOGY_GRID = {'num_nodes': GRID_NUM_NODES, 'adjacency': GRID_ADJACENCY}
 ETA = 0.9
 K = 0.5             # AQRERM 논문 기준 — eta2 = k · R_x, k=0.5
 L = 3
-C = 0.5             # AQLRERM 식 큐 페널티 — 본 sweep 에선 고정
+C = 0.5             # AQRERM_c 식 큐 페널티 — 본 sweep 에선 고정
 
 BASE_PARAMS = {'eta': ETA, 'k': K, 'L': L, 'c': C}
 
@@ -31,7 +31,7 @@ BMAX_COLORS = ['gold', 'orange', 'blue', 'red', 'black']
 # 비교용 baseline 알고리즘 — 점선으로 표시
 BASELINE_ALGOS = [
     ('aqrerm',   'AQRERM',           'navy'),
-    # ('aqlrerm',  'AQLRERM_c=0.5',    'green'),
+    # ('aqrerm_c',  'AQRERM_c=0.5',    'green'),
 ]
 
 STAT_INTERVAL = 100

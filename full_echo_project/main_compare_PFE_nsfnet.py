@@ -18,36 +18,56 @@ BASE_PARAMS = {'eta': ETA, 'k': K, 'L': L, 'c': C}
 TOPOLOGY_NSFNET = {'num_nodes': NSFNET_NUM_NODES, 'adjacency': NSFNET_ADJACENCY}
 
 # 비교 대상 알고리즘 (활성 리스트만 실제 실행, 나머지는 LABELS/COLORS 매핑만 유지)
-ALGORITHMS = ['aqrerm', 'pfe_c_pre_echo_tick']
+ALGORITHMS = [
+    'aqrerm',
+    # 'aqrerm_c',
+    # 'aqrerm_c_pre',
+    # 'pfe_echo_tick',
+    # 'pfe_c_echo_tick',
+    # 'pfe_pre_echo_tick',
+    'pfe_c_pre_echo_tick', # ★ 메인 포커스: 큐 항 (c · queue) 추가한 PFE 변형
+    # 'fe_c_pre_echo',
+    # 'pfe_c_pre_echo_tick_no_L',
+]
 LABELS = {
-    # 'q_routing':           'Q-routing',
-    # 'aqfe':                'AQFE',
-    'aqrerm':              'AQRERM',
-    'pfe_c_pre_echo_tick': 'PFE_c_PreEcho_Tick',
+    'pfe_echo_tick':            'PFE_echo_tick',
+    'pfe_pre_echo_tick':        'PFE_pre_echo_tick',
+    'aqrerm_c':                  'AQRERM_c',
+    'aqrerm':                   'AQRERM',
+    'pfe_c_echo_tick':          'PFE_c_echo_tick',
+    'pfe_c_pre_echo_tick':      'PFE_c_pre_echo_tick',
+    'aqrerm_c_pre':             'AQRERM_c_pre_RERM',
+    'fe_c_pre_echo':            'FE_c_pre_echo',
+    'pfe_c_pre_echo_tick_no_L': 'PFE_c_pre_echo_tick_noL',
 }
 # 적녹색약 친화 (Wong palette)
 COLORS = {
-    'q_routing':           '#0072B2',  # 파랑
-    'aqfe':                '#E69F00',  # 주황
-    'aqrerm':              '#009E73',  # 청록
-    'pfe_c_pre_echo_tick': '#D55E00',  # 주홍 (vermillion)
+    'pfe_echo_tick':            '#0072B2',  # 파랑
+    'pfe_pre_echo_tick':        '#E69F00',  # 주황
+    'aqrerm_c':                  '#009E73',  # 청록
+    'aqrerm':                   '#CC79A7',  # 분홍보라
+    'pfe_c_echo_tick':          '#D55E00',  # 주홍 (vermillion)
+    'pfe_c_pre_echo_tick':      '#56B4E9',  # 하늘색
+    'aqrerm_c_pre':             '#F0E442',  # 노랑
+    'fe_c_pre_echo':            '#000000',  # 검정 (always-FE 강조)
+    'pfe_c_pre_echo_tick_no_L': "#0400FF",  # 회색 (L=0, no Route Memory)
 }
 
 # 10 개 시드 × 알고리즘 × 부하별 반복
 SEEDS = list(range(100, 1001, 100))  # [100, 200, ..., 1000]
 
 STAT_INTERVAL = 100
-MD_PATH = 'result_compare_algos_nsfnet.md'
+MD_PATH = 'result_compare_PFE_nsfnet.md'
 
 EXPERIMENTS = [
     # {'lam': 1, 'total_ticks': 14000, 'title': 'λ=1'},
-    {'lam': 2, 'total_ticks': 40000, 'title': 'λ=2'},
-    {'lam': 3, 'total_ticks': 40000, 'title': 'λ=3'},
-    {'lam': 3.5, 'total_ticks': 40000, 'title': 'λ=3.5'},
-    {'lam': 3.7, 'total_ticks': 40000, 'title': 'λ=3.7'},
+    # {'lam': 2, 'total_ticks': 40000, 'title': 'λ=2'},
+    # {'lam': 3, 'total_ticks': 40000, 'title': 'λ=3'},
+    # {'lam': 3.5, 'total_ticks': 40000, 'title': 'λ=3.5'},
+    # {'lam': 3.7, 'total_ticks': 40000, 'title': 'λ=3.7'},
     {'lam': 3.8, 'total_ticks': 40000, 'title': 'λ=3.8'},
-    # {'lam': 3.9, 'total_ticks': 40000, 'title': 'λ=3.9'},
-    # {'lam': 4.0, 'total_ticks': 40000, 'title': 'λ=4.0'},
+    {'lam': 3.9, 'total_ticks': 40000, 'title': 'λ=3.9'},
+    {'lam': 4.0, 'total_ticks': 40000, 'title': 'λ=4.0'},
 ]
 
 
@@ -141,7 +161,7 @@ def run_all():
             ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    filename = 'result_compare_algos_nsfnet.png'
+    filename = 'result_compare_PFE_nsfnet.png'
     plt.savefig(filename, dpi=150)
     print(f"\n결과 저장: {filename}")
     plt.close()
