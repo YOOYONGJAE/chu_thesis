@@ -19,19 +19,23 @@ TOPOLOGY_GRID = {'num_nodes': GRID_NUM_NODES, 'adjacency': GRID_ADJACENCY}
 
 # 비교 대상 알고리즘 (main_compare_PFE.py 와 동일 풀, 활성 리스트만 실행)
 ALGORITHMS = [
+    'q_routing',
+    'aqfe',
     'aqrerm',
     # 'aqrerm_c',
     # 'aqrerm_c_pre',
     # 'pfe_echo_tick',
     # 'pfe_c_echo_tick',
     # 'pfe_pre_echo_tick',
-    # 'pfe_c_pre_echo_tick',
+    'pfe_c_pre_echo_tick',
     # 'fe_c_pre_echo',
     # 'pfe_c_pre_echo_tick_no_L',
-    'aqrerm_no_L',
-    'aqrerm_4000_no_L',
+    # 'aqrerm_no_L',
+    # 'aqrerm_4000_no_L',
 ]
 LABELS = {
+    'q_routing':                'Q-routing',
+    'aqfe':                     'AQFE',
     'pfe_echo_tick':            'PFE_echo_tick',
     'pfe_pre_echo_tick':        'PFE_pre_echo_tick',
     'aqrerm_c':                  'AQRERM_c',
@@ -46,6 +50,8 @@ LABELS = {
 }
 # 적녹색약 친화 (Wong palette)
 COLORS = {
+    'q_routing':                '#117733',  # 진녹 (baseline 최단순)
+    'aqfe':                     '#44AA99',  # teal (AQRERM 의 부모)
     'pfe_echo_tick':            '#0072B2',  # 파랑
     'pfe_pre_echo_tick':        '#E69F00',  # 주황
     'aqrerm_c':                  '#009E73',  # 청록

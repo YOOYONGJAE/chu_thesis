@@ -39,7 +39,7 @@ TOPOLOGY_GRID = {'num_nodes': GRID_NUM_NODES, 'adjacency': GRID_ADJACENCY}
 ALGORITHMS = [
     # 'q_routing',
     # 'aqfe',
-    # 'aqrerm',
+    'aqrerm',
     # 'aqrerm_no_L',
     'aqrerm_pre',
     'aqrerm_c',
@@ -72,12 +72,12 @@ COLORS = {
     'aqfe':                     "#FFBCBC",
     'pfe_echo_tick':            '#0072B2',  # 파랑
     'pfe_pre_echo_tick':        "#DAA32D",  # 주황
-    'aqrerm_c':                  "#000000",  # 검정
+    'aqrerm_c':                  "#0011FF",  # 검정
     'aqrerm':                   '#CC79A7',  # 분홍보라
     'aqrerm_no_L':              '#882255',  # 진한 자주 (AQRERM family, 항상 no L)
     'pfe_c_echo_tick':          '#D55E00',  # 주홍 (vermillion)
     'pfe_c_pre_echo_tick':      '#56B4E9',  # 하늘색
-    'aqrerm_c_pre':             '#F0E442',  # 노랑
+    'aqrerm_c_pre':             "#E4D611",  # 노랑
     'aqrerm_pre':              '#117733',  # 진녹 (AQRERM pre-echo, c 없음)
     'fe_c_pre_echo':            '#000000',  # 검정 (always-FE 강조)
     'pfe_c_pre_echo_tick_no_L': "#3700FF",  # 회색 (L=0, no Route Memory)
@@ -91,12 +91,12 @@ MD_PATH = 'result_compare_PFE.md'
 
 EXPERIMENTS = [
     # {'lam': 1, 'total_ticks': 14000, 'title': 'λ=1'},
-    {'lam': 2, 'total_ticks': 40000, 'title': 'λ=2'},
-    {'lam': 2.5, 'total_ticks': 40000, 'title': 'λ=2.5'},
-    {'lam': 3, 'total_ticks': 40000, 'title': 'λ=3'},
-    # {'lam': 3.5, 'total_ticks': 40000, 'title': 'λ=3.5'},
-    # {'lam': 3.7, 'total_ticks': 40000, 'title': 'λ=3.7'},
-    # {'lam': 3.8, 'total_ticks': 40000, 'title': 'λ=3.8'},
+    # {'lam': 2, 'total_ticks': 40000, 'title': 'λ=2'},
+    # {'lam': 2.5, 'total_ticks': 40000, 'title': 'λ=2.5'},
+    # {'lam': 3, 'total_ticks': 40000, 'title': 'λ=3'},
+    {'lam': 3.5, 'total_ticks': 40000, 'title': 'λ=3.5'},
+    {'lam': 3.7, 'total_ticks': 40000, 'title': 'λ=3.7'},
+    {'lam': 3.8, 'total_ticks': 40000, 'title': 'λ=3.8'},
     # {'lam': 3.9, 'total_ticks': 40000, 'title': 'λ=3.9'},
     # {'lam': 4.0, 'total_ticks': 40000, 'title': 'λ=4.0'},
 ]
