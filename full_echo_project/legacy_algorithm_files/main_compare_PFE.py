@@ -1,8 +1,9 @@
 # =============================================================================
-# [요약] 계보 비교 허브 — Q-routing / AQFE / AQRERM / AQPACE, 6x6 grid
-# - 10 시드 sweep, λ 별 ADT median + IQR 그래프 + markdown 결과표
-# - ALGORITHMS 주석 토글로 원하는 조합만 실행 가능
-# - 구세대 변형 (ablation 등) 포함 버전은 legacy_algorithm_files/main_compare_PFE.py 참조
+# [요약] 범용 알고리즘 비교 허브 — 6x6 grid, 10 시드 sweep, median + IQR 그래프
+# - 알고리즘 풀 전체 (Q-routing / AQFE / AQRERM 계열 / PFE 계열 / FE) 를 보유,
+#   ALGORITHMS 리스트의 주석 토글로 원하는 조합만 골라 실행
+# - 계보 비교, L 유무 ablation, c/pre 속성 이식 실험 등
+#   result_compare 폴더의 대부분 비교 md/png 가 이 스크립트 산출물
 # =============================================================================
 import random
 import numpy as np
@@ -18,46 +19,87 @@ from topology_grid import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACEN
 ETA = 0.9
 K   = 0.5
 L   = 3
-C   = 0.22   # aqpace 의 큐 페널티 가중치 (다른 알고리즘은 이 키를 안 읽음)
+C   = 0.22   # pfe_c_*_echo_tick / aqrerm_c 등에서 사용하는 큐 페널티 가중치
 BASE_PARAMS = {'eta': ETA, 'k': K, 'L': L, 'c': C}
 
 TOPOLOGY_GRID = {'num_nodes': GRID_NUM_NODES, 'adjacency': GRID_ADJACENCY}
 
-# -------------------------------------------------------------------------
-# 비교 대상 알고리즘 (4종)
-# - q_routing : Boyan & Littman 1994. y* 만 단일 업데이트, echo 없음
-# - aqfe      : Adaptive Q-routing with Full Echo. 매 라우팅 전 이웃 echo
-# - aqrerm    : Random Echo + Route Memory. 확률 p = T_est/T_max 로 부분 echo
-# - aqpace    : 포인트 예산 게이트 + pre-echo + c·queue 페널티 (제안 기법)
-# -------------------------------------------------------------------------
+# 비교 대상 알고리즘 풀 (각 한 줄 요약)
+# 차원: 선택 정보 (stale Q / fresh t) · c 페널티 (있음/없음) · echo 전략 (PFE 포인트 게이트 / 확률적 / always full) · Route Memory (L=3 / L=0)
+#
+# === AQRERM family (확률적 echo) ===
+# - aqrerm                   : baseline. stale Q 선택, 확률 p 로 부분 echo. c 없음, L=3
+# - aqrerm_no_L              : aqrerm 와 동일하되 L=0 (Route Memory 완전 비활성)
+# - aqrerm_c                 : stale Q + c·queue 선택, 확률적 echo (구 AQLRERM)
+# - aqrerm_pre              : AQRERM pre-echo. 랜덤 echo 먼저 (이전 y* 보장) → fresh t 로 선택, c 없음
+# - aqrerm_c_pre            : AQRERM_c pre-echo. 랜덤 echo 먼저 → fresh t + c·queue 로 선택
+#
+# === PFE family (포인트 게이트 풀에코) ===
+# - pfe_echo_tick            : select-first (stale Q) + PFE 포인트 게이트, c 없음
+# - pfe_c_echo_tick          : select-first (stale Q + c·queue) + PFE 포인트 게이트
+# - pfe_pre_echo_tick        : echo-first (fresh t) + PFE 포인트 게이트, c 없음
+# - aqpace      : echo-first (fresh t + c·queue) + PFE 포인트 게이트 (★ 전부 적용)
+# - aqpace_no_L : aqpace 와 동일하되 L=0
+#
+# === Full Echo family (게이트 없음) ===
+# - fe_c_pre_echo            : 매 라우팅 무조건 full echo, fresh t + c·queue 로 선택 (echo 비용 상한선 기준)
 ALGORITHMS = [
-    'q_routing',
-    'aqfe',
+    # 'q_routing',
+    # 'aqfe',
     'aqrerm',
-    'aqpace',
+    # 'aqrerm_no_L',
+    'aqrerm_pre',
+    'aqrerm_c',
+    'aqrerm_c_pre',
+    # 'pfe_echo_tick',
+    # 'pfe_c_echo_tick',
+    # 'pfe_pre_echo_tick',
+    'aqpace', # ★ 메인 포커스: 큐 항 (c · queue) 추가한 PFE 변형
+    # 'fe_c_pre_echo',
+    # 'aqpace_no_L',
 ]
 LABELS = {
-    'q_routing': 'Q-routing',
-    'aqfe':      'AQFE',
-    'aqrerm':    'AQRERM',
-    'aqpace':    'AQPACE',
+    'q_routing': 'Q-routing', 
+    'aqfe': 'AQFE',
+    'pfe_echo_tick':            'PFE_echo_tick',
+    'pfe_pre_echo_tick':        'PFE_pre_echo_tick',
+    'aqrerm_c':                  'AQRERM_c',
+    'aqrerm':                   'AQRERM',
+    'aqrerm_no_L':              'AQRERM_no_L',
+    'aqpace':      'AQPACE',
+    'aqrerm_c_pre':             'AQRERM_c_pre_RERM',
+    'aqrerm_pre':              'AQRERM_pre',
+    'fe_c_pre_echo':            'FE_c_pre_echo',
+    'pfe_c_echo_tick':          'PFE_c_echo_tick',
+    'aqpace_no_L': 'AQPACE_noL',
 }
 # 적녹색약 친화 (Wong palette)
 COLORS = {
-    'q_routing': '#117733',  # 진녹 (baseline 최단순)
-    'aqfe':      '#44AA99',  # teal (AQRERM 의 부모)
-    'aqrerm':    '#CC79A7',  # 분홍보라 (baseline)
-    'aqpace':    '#56B4E9',  # 하늘색 (제안 기법)
+    'q_routing':                "#00FF73", 
+    'aqfe':                     "#FFBCBC",
+    'pfe_echo_tick':            '#0072B2',  # 파랑
+    'pfe_pre_echo_tick':        "#DAA32D",  # 주황
+    'aqrerm_c':                  "#0011FF",  # 검정
+    'aqrerm':                   '#CC79A7',  # 분홍보라
+    'aqrerm_no_L':              '#882255',  # 진한 자주 (AQRERM family, 항상 no L)
+    'pfe_c_echo_tick':          '#D55E00',  # 주홍 (vermillion)
+    'aqpace':      '#56B4E9',  # 하늘색
+    'aqrerm_c_pre':             "#E4D611",  # 노랑
+    'aqrerm_pre':              '#117733',  # 진녹 (AQRERM pre-echo, c 없음)
+    'fe_c_pre_echo':            '#000000',  # 검정 (always-FE 강조)
+    'aqpace_no_L': "#3700FF",  # 회색 (L=0, no Route Memory)
 }
 
-# 10 개 시드 × 알고리즘 × 부하별 반복
+# 10 개 시드 × 5 알고리즘 × 부하별 반복
 SEEDS = list(range(100, 1001, 100))  # [100, 200, ..., 1000]
 
 STAT_INTERVAL = 100
 MD_PATH = 'result_compare_PFE.md'
 
 EXPERIMENTS = [
+    # {'lam': 1, 'total_ticks': 14000, 'title': 'λ=1'},
     # {'lam': 2, 'total_ticks': 40000, 'title': 'λ=2'},
+    # {'lam': 2.5, 'total_ticks': 40000, 'title': 'λ=2.5'},
     # {'lam': 3, 'total_ticks': 40000, 'title': 'λ=3'},
     {'lam': 3.5, 'total_ticks': 40000, 'title': 'λ=3.5'},
     {'lam': 3.7, 'total_ticks': 40000, 'title': 'λ=3.7'},
@@ -79,19 +121,19 @@ def run_one(algo, lam, total_ticks, seed):
 
 
 # -------------------------------------------------------------------------
-# 메인: 각 부하별로 알고리즘들을 10 시드씩 돌려 median + IQR 시각화
+# 메인: 각 부하별로 5 개 알고리즘을 10 시드씩 돌려 median + IQR 시각화
 # -------------------------------------------------------------------------
 def run_all():
     fig, axes = plt.subplots(1, len(EXPERIMENTS), figsize=(60, 15), squeeze=False)
     axes = axes.flatten()  # EXPERIMENTS 가 1 개여도 1D 배열로 유지
     active_labels = ' / '.join(LABELS[a] for a in ALGORITHMS)
     fig.suptitle(
-        f"6x6 Grid — Algorithm comparison ({active_labels}) "
+        f"6x6 Grid — PFE 변형 comparison ({active_labels}) "
         f"(seeds={SEEDS[0]}~{SEEDS[-1]}, n={len(SEEDS)}, median + IQR band)"
     )
 
     with open(MD_PATH, 'w', encoding='utf-8') as md:
-        md.write('# 6x6 Grid Algorithm comparison (seed sweep)\n\n')
+        md.write('# 6x6 Grid PFE 변형 comparison (seed sweep)\n\n')
         md.write(f'- Seeds: {SEEDS}\n')
         md.write(f'- Algorithms: {[LABELS[a] for a in ALGORITHMS]}\n')
         md.write(f'- BASE_PARAMS: {BASE_PARAMS}\n\n')
@@ -161,6 +203,8 @@ def run_all():
     plt.savefig(filename, dpi=150)
     print(f"\n결과 저장: {filename}")
     plt.close()
+
+    print(f"\n로그: {MD_PATH}")
 
 
 if __name__ == '__main__':

@@ -1,3 +1,8 @@
+# =============================================================================
+# [요약] NSFNET 토폴로지 일반화 검증 — AQRERM vs AQPACE, 10 시드 sweep
+# - 6x6 grid 가 아닌 실제 백본망 (NSFNET) 에서 λ 별 ADT median + IQR 비교
+# - "grid 특화 아님" 을 보이는 일반화 증거 생산 (main_compare_PFE 의 NSFNET 판)
+# =============================================================================
 import random
 import numpy as np
 import matplotlib
@@ -12,45 +17,30 @@ from topology_nsfnet import NUM_NODES as NSFNET_NUM_NODES, ADJACENCY as NSFNET_A
 ETA = 0.9
 K   = 0.5
 L   = 3
-C   = 0.22   # pfe_c_pre_echo_tick 의 큐 페널티 가중치 (다른 알고리즘은 이 키를 안 읽음)
+C   = 0.22   # aqpace 의 큐 페널티 가중치 (다른 알고리즘은 이 키를 안 읽음)
 BASE_PARAMS = {'eta': ETA, 'k': K, 'L': L, 'c': C}
 
 TOPOLOGY_NSFNET = {'num_nodes': NSFNET_NUM_NODES, 'adjacency': NSFNET_ADJACENCY}
 
-# 비교 대상 알고리즘 (활성 리스트만 실제 실행, 나머지는 LABELS/COLORS 매핑만 유지)
+# 비교 대상 알고리즘 (4종 중 필요한 것만 활성)
 ALGORITHMS = [
+    # 'q_routing',
+    # 'aqfe',
     'aqrerm',
-    # 'aqrerm_c',
-    # 'aqrerm_c_pre',
-    # 'pfe_echo_tick',
-    # 'pfe_c_echo_tick',
-    # 'pfe_pre_echo_tick',
-    'pfe_c_pre_echo_tick', # ★ 메인 포커스: 큐 항 (c · queue) 추가한 PFE 변형
-    # 'fe_c_pre_echo',
-    # 'pfe_c_pre_echo_tick_no_L',
+    'aqpace',
 ]
 LABELS = {
-    'pfe_echo_tick':            'PFE_echo_tick',
-    'pfe_pre_echo_tick':        'PFE_pre_echo_tick',
-    'aqrerm_c':                  'AQRERM_c',
-    'aqrerm':                   'AQRERM',
-    'pfe_c_echo_tick':          'PFE_c_echo_tick',
-    'pfe_c_pre_echo_tick':      'PFE_c_pre_echo_tick',
-    'aqrerm_c_pre':             'AQRERM_c_pre_RERM',
-    'fe_c_pre_echo':            'FE_c_pre_echo',
-    'pfe_c_pre_echo_tick_no_L': 'PFE_c_pre_echo_tick_noL',
+    'q_routing': 'Q-routing',
+    'aqfe':      'AQFE',
+    'aqrerm':    'AQRERM',
+    'aqpace':    'AQPACE',
 }
 # 적녹색약 친화 (Wong palette)
 COLORS = {
-    'pfe_echo_tick':            '#0072B2',  # 파랑
-    'pfe_pre_echo_tick':        '#E69F00',  # 주황
-    'aqrerm_c':                  '#009E73',  # 청록
-    'aqrerm':                   '#CC79A7',  # 분홍보라
-    'pfe_c_echo_tick':          '#D55E00',  # 주홍 (vermillion)
-    'pfe_c_pre_echo_tick':      '#56B4E9',  # 하늘색
-    'aqrerm_c_pre':             '#F0E442',  # 노랑
-    'fe_c_pre_echo':            '#000000',  # 검정 (always-FE 강조)
-    'pfe_c_pre_echo_tick_no_L': "#0400FF",  # 회색 (L=0, no Route Memory)
+    'q_routing': '#117733',  # 진녹 (baseline 최단순)
+    'aqfe':      '#44AA99',  # teal (AQRERM 의 부모)
+    'aqrerm':    '#CC79A7',  # 분홍보라 (baseline)
+    'aqpace':    '#56B4E9',  # 하늘색 (제안 기법)
 }
 
 # 10 개 시드 × 알고리즘 × 부하별 반복

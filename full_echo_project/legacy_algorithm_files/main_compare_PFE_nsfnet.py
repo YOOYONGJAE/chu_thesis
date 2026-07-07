@@ -1,8 +1,7 @@
 # =============================================================================
-# [요약] 계보 비교 허브 — Q-routing / AQFE / AQRERM / AQPACE, 6x6 grid
-# - 10 시드 sweep, λ 별 ADT median + IQR 그래프 + markdown 결과표
-# - ALGORITHMS 주석 토글로 원하는 조합만 실행 가능
-# - 구세대 변형 (ablation 등) 포함 버전은 legacy_algorithm_files/main_compare_PFE.py 참조
+# [요약] NSFNET 토폴로지 일반화 검증 — AQRERM vs AQPACE, 10 시드 sweep
+# - 6x6 grid 가 아닌 실제 백본망 (NSFNET) 에서 λ 별 ADT median + IQR 비교
+# - "grid 특화 아님" 을 보이는 일반화 증거 생산 (main_compare_PFE 의 NSFNET 판)
 # =============================================================================
 import random
 import numpy as np
@@ -10,7 +9,7 @@ import matplotlib
 matplotlib.use('Agg')  # GUI 없이 파일로만 저장
 import matplotlib.pyplot as plt
 from simulator import Simulator
-from topology_grid import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACENCY
+from topology_nsfnet import NUM_NODES as NSFNET_NUM_NODES, ADJACENCY as NSFNET_ADJACENCY
 
 # -------------------------------------------------------------------------
 # 파라미터 설정
@@ -21,49 +20,59 @@ L   = 3
 C   = 0.22   # aqpace 의 큐 페널티 가중치 (다른 알고리즘은 이 키를 안 읽음)
 BASE_PARAMS = {'eta': ETA, 'k': K, 'L': L, 'c': C}
 
-TOPOLOGY_GRID = {'num_nodes': GRID_NUM_NODES, 'adjacency': GRID_ADJACENCY}
+TOPOLOGY_NSFNET = {'num_nodes': NSFNET_NUM_NODES, 'adjacency': NSFNET_ADJACENCY}
 
-# -------------------------------------------------------------------------
-# 비교 대상 알고리즘 (4종)
-# - q_routing : Boyan & Littman 1994. y* 만 단일 업데이트, echo 없음
-# - aqfe      : Adaptive Q-routing with Full Echo. 매 라우팅 전 이웃 echo
-# - aqrerm    : Random Echo + Route Memory. 확률 p = T_est/T_max 로 부분 echo
-# - aqpace    : 포인트 예산 게이트 + pre-echo + c·queue 페널티 (제안 기법)
-# -------------------------------------------------------------------------
+# 비교 대상 알고리즘 (활성 리스트만 실제 실행, 나머지는 LABELS/COLORS 매핑만 유지)
 ALGORITHMS = [
-    'q_routing',
-    'aqfe',
     'aqrerm',
-    'aqpace',
+    # 'aqrerm_c',
+    # 'aqrerm_c_pre',
+    # 'pfe_echo_tick',
+    # 'pfe_c_echo_tick',
+    # 'pfe_pre_echo_tick',
+    'aqpace', # ★ 메인 포커스: 큐 항 (c · queue) 추가한 PFE 변형
+    # 'fe_c_pre_echo',
+    # 'aqpace_no_L',
 ]
 LABELS = {
-    'q_routing': 'Q-routing',
-    'aqfe':      'AQFE',
-    'aqrerm':    'AQRERM',
-    'aqpace':    'AQPACE',
+    'pfe_echo_tick':            'PFE_echo_tick',
+    'pfe_pre_echo_tick':        'PFE_pre_echo_tick',
+    'aqrerm_c':                  'AQRERM_c',
+    'aqrerm':                   'AQRERM',
+    'pfe_c_echo_tick':          'PFE_c_echo_tick',
+    'aqpace':      'AQPACE',
+    'aqrerm_c_pre':             'AQRERM_c_pre_RERM',
+    'fe_c_pre_echo':            'FE_c_pre_echo',
+    'aqpace_no_L': 'AQPACE_noL',
 }
 # 적녹색약 친화 (Wong palette)
 COLORS = {
-    'q_routing': '#117733',  # 진녹 (baseline 최단순)
-    'aqfe':      '#44AA99',  # teal (AQRERM 의 부모)
-    'aqrerm':    '#CC79A7',  # 분홍보라 (baseline)
-    'aqpace':    '#56B4E9',  # 하늘색 (제안 기법)
+    'pfe_echo_tick':            '#0072B2',  # 파랑
+    'pfe_pre_echo_tick':        '#E69F00',  # 주황
+    'aqrerm_c':                  '#009E73',  # 청록
+    'aqrerm':                   '#CC79A7',  # 분홍보라
+    'pfe_c_echo_tick':          '#D55E00',  # 주홍 (vermillion)
+    'aqpace':      '#56B4E9',  # 하늘색
+    'aqrerm_c_pre':             '#F0E442',  # 노랑
+    'fe_c_pre_echo':            '#000000',  # 검정 (always-FE 강조)
+    'aqpace_no_L': "#0400FF",  # 회색 (L=0, no Route Memory)
 }
 
 # 10 개 시드 × 알고리즘 × 부하별 반복
 SEEDS = list(range(100, 1001, 100))  # [100, 200, ..., 1000]
 
 STAT_INTERVAL = 100
-MD_PATH = 'result_compare_PFE.md'
+MD_PATH = 'result_compare_PFE_nsfnet.md'
 
 EXPERIMENTS = [
+    # {'lam': 1, 'total_ticks': 14000, 'title': 'λ=1'},
     # {'lam': 2, 'total_ticks': 40000, 'title': 'λ=2'},
     # {'lam': 3, 'total_ticks': 40000, 'title': 'λ=3'},
-    {'lam': 3.5, 'total_ticks': 40000, 'title': 'λ=3.5'},
-    {'lam': 3.7, 'total_ticks': 40000, 'title': 'λ=3.7'},
+    # {'lam': 3.5, 'total_ticks': 40000, 'title': 'λ=3.5'},
+    # {'lam': 3.7, 'total_ticks': 40000, 'title': 'λ=3.7'},
     {'lam': 3.8, 'total_ticks': 40000, 'title': 'λ=3.8'},
-    # {'lam': 3.9, 'total_ticks': 40000, 'title': 'λ=3.9'},
-    # {'lam': 4.0, 'total_ticks': 40000, 'title': 'λ=4.0'},
+    {'lam': 3.9, 'total_ticks': 40000, 'title': 'λ=3.9'},
+    {'lam': 4.0, 'total_ticks': 40000, 'title': 'λ=4.0'},
 ]
 
 
@@ -73,7 +82,7 @@ EXPERIMENTS = [
 def run_one(algo, lam, total_ticks, seed):
     random.seed(seed)
     np.random.seed(seed)
-    sim = Simulator(algorithm=algo, params=BASE_PARAMS, seed=seed, topology=TOPOLOGY_GRID)
+    sim = Simulator(algorithm=algo, params=BASE_PARAMS, seed=seed, topology=TOPOLOGY_NSFNET)
     adt = sim.run(lam=lam, total_ticks=total_ticks, stat_interval=STAT_INTERVAL)
     return sim, adt
 
@@ -82,16 +91,16 @@ def run_one(algo, lam, total_ticks, seed):
 # 메인: 각 부하별로 알고리즘들을 10 시드씩 돌려 median + IQR 시각화
 # -------------------------------------------------------------------------
 def run_all():
-    fig, axes = plt.subplots(1, len(EXPERIMENTS), figsize=(60, 15), squeeze=False)
+    fig, axes = plt.subplots(1, len(EXPERIMENTS), figsize=(60, 10), squeeze=False)
     axes = axes.flatten()  # EXPERIMENTS 가 1 개여도 1D 배열로 유지
     active_labels = ' / '.join(LABELS[a] for a in ALGORITHMS)
     fig.suptitle(
-        f"6x6 Grid — Algorithm comparison ({active_labels}) "
+        f"NSFNET — {active_labels} comparison "
         f"(seeds={SEEDS[0]}~{SEEDS[-1]}, n={len(SEEDS)}, median + IQR band)"
     )
 
     with open(MD_PATH, 'w', encoding='utf-8') as md:
-        md.write('# 6x6 Grid Algorithm comparison (seed sweep)\n\n')
+        md.write('# NSFNET Algorithm comparison (seed sweep)\n\n')
         md.write(f'- Seeds: {SEEDS}\n')
         md.write(f'- Algorithms: {[LABELS[a] for a in ALGORITHMS]}\n')
         md.write(f'- BASE_PARAMS: {BASE_PARAMS}\n\n')
@@ -157,10 +166,12 @@ def run_all():
             ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    filename = 'result_compare_PFE.png'
+    filename = 'result_compare_PFE_nsfnet.png'
     plt.savefig(filename, dpi=150)
     print(f"\n결과 저장: {filename}")
     plt.close()
+
+    print(f"\n로그: {MD_PATH}")
 
 
 if __name__ == '__main__':

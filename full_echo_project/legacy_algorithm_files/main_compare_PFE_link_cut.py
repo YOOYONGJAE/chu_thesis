@@ -18,30 +18,57 @@ from topology_grid import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACEN
 ETA = 0.9
 K   = 0.5
 L   = 3
-C   = 0.22   # aqpace 의 큐 페널티 가중치 (다른 알고리즘은 이 키를 안 읽음)
+C   = 0.22   # pfe_c_*_echo_tick / aqrerm_c 등에서 사용하는 큐 페널티 가중치
 BASE_PARAMS = {'eta': ETA, 'k': K, 'L': L, 'c': C}
 
 TOPOLOGY_GRID = {'num_nodes': GRID_NUM_NODES, 'adjacency': GRID_ADJACENCY}
 
-# 비교 대상 알고리즘 (4종, main_compare_PFE.py 와 동일)
+# 비교 대상 알고리즘 (main_compare_PFE.py 와 동일 풀, 활성 리스트만 실행)
 ALGORITHMS = [
     'q_routing',
     'aqfe',
     'aqrerm',
+    # 'aqrerm_c',
+    # 'aqrerm_c_pre',
+    # 'pfe_echo_tick',
+    # 'pfe_c_echo_tick',
+    # 'pfe_pre_echo_tick',
     'aqpace',
+    # 'fe_c_pre_echo',
+    # 'aqpace_no_L',
+    # 'aqrerm_no_L',
+    # 'aqrerm_4000_no_L',
 ]
 LABELS = {
-    'q_routing': 'Q-routing',
-    'aqfe':      'AQFE',
-    'aqrerm':    'AQRERM',
-    'aqpace':    'AQPACE',
+    'q_routing':                'Q-routing',
+    'aqfe':                     'AQFE',
+    'pfe_echo_tick':            'PFE_echo_tick',
+    'pfe_pre_echo_tick':        'PFE_pre_echo_tick',
+    'aqrerm_c':                  'AQRERM_c',
+    'aqrerm':                   'AQRERM',
+    'pfe_c_echo_tick':          'PFE_c_echo_tick',
+    'aqpace':      'AQPACE',
+    'aqrerm_c_pre':             'AQRERM_c_pre_RERM',
+    'fe_c_pre_echo':            'FE_c_pre_echo',
+    'aqpace_no_L': 'AQPACE_noL',
+    'aqrerm_no_L':              'AQRERM_no_L',
+    'aqrerm_4000_no_L':         'AQRERM_4000_no_L',
 }
 # 적녹색약 친화 (Wong palette)
 COLORS = {
-    'q_routing': '#117733',  # 진녹 (baseline 최단순)
-    'aqfe':      '#44AA99',  # teal (AQRERM 의 부모)
-    'aqrerm':    '#CC79A7',  # 분홍보라 (baseline)
-    'aqpace':    '#56B4E9',  # 하늘색 (제안 기법)
+    'q_routing':                '#117733',  # 진녹 (baseline 최단순)
+    'aqfe':                     '#44AA99',  # teal (AQRERM 의 부모)
+    'pfe_echo_tick':            '#0072B2',  # 파랑
+    'pfe_pre_echo_tick':        '#E69F00',  # 주황
+    'aqrerm_c':                  '#009E73',  # 청록
+    'aqrerm':                   '#CC79A7',  # 분홍보라
+    'pfe_c_echo_tick':          '#D55E00',  # 주홍 (vermillion)
+    'aqpace':      '#56B4E9',  # 하늘색
+    'aqrerm_c_pre':             '#F0E442',  # 노랑
+    'fe_c_pre_echo':            '#000000',  # 검정 (always-FE 강조)
+    'aqpace_no_L': '#999999',  # 회색 (L=0, no Route Memory)
+    'aqrerm_no_L':              '#882255',  # 진한 자주 (AQRERM family, 항상 no L)
+    'aqrerm_4000_no_L':         "#0400FF",  # 진한 파랑 (AQRERM family, 4000 이후 no L)
 }
 
 # 10 개 시드 × 알고리즘 × (절단 시나리오 × 부하) 별 반복
@@ -72,7 +99,9 @@ LAMBDAS = [1.5, 2]
 def run_one(algo, lam, seed, cuts):
     random.seed(seed)
     np.random.seed(seed)
-    sim = Simulator(algorithm=algo, params=BASE_PARAMS, seed=seed, topology=TOPOLOGY_GRID)
+    # memory_cut_tick : _l0 변형들이 cut 후 L=0 강제하는 데 사용 (해당 알고리즘만 읽음)
+    params = {**BASE_PARAMS, 'memory_cut_tick': CUT_TICK}
+    sim = Simulator(algorithm=algo, params=params, seed=seed, topology=TOPOLOGY_GRID)
     adt = sim.run(
         lam=lam,
         total_ticks=TOTAL_TICKS,

@@ -1,6 +1,7 @@
 """
-PFE_c_PreEcho_Tick 의 c, pfe_gr, pfe_b_max 세 파라미터 조합을
-Bayesian Optimization 으로 탐색하여 가장 좋은 조합을 찾는 스크립트.
+[요약] AQPACE 파라미터 자동 튜닝 — c, pfe_gr, pfe_b_max 세 파라미터 조합을
+Bayesian Optimization (gp_minimize, 40회 평가) 으로 탐색하는 스크립트.
+λ=3.6, 10 시드 평가. 현재 BASE_PARAMS 의 c=0.22 / b_max=0.5 가 이 결과에서 나옴.
 
 평가 점수 식 :
     score_seed = mean(ADT[0:half]) + mean(ADT[half:]) + 0.5 * std(ADT[half:])
@@ -30,7 +31,7 @@ from skopt.space import Real
 # 토폴로지 / 알고리즘 / 부하
 # -------------------------------------------------------------------------
 TOPOLOGY_GRID = {'num_nodes': GRID_NUM_NODES, 'adjacency': GRID_ADJACENCY}
-ALGORITHM = 'pfe_c_pre_echo_tick'
+ALGORITHM = 'aqpace'
 LAM = 3.6
 
 # -------------------------------------------------------------------------
@@ -71,8 +72,8 @@ SPACE = [
 # -------------------------------------------------------------------------
 # 출력 파일
 # -------------------------------------------------------------------------
-PNG_PATH = 'result_compare_PCPET_p_params.png'
-MD_PATH  = 'result_compare_PCPET_p_params.md'
+PNG_PATH = 'result_compare_AQPACE_p_params.png'
+MD_PATH  = 'result_compare_AQPACE_p_params.md'
 
 
 # -------------------------------------------------------------------------

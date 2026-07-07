@@ -1,3 +1,9 @@
+# =============================================================================
+# [요약] AQPACE 단독 — 큐 페널티 계수 c 의 효과 측정 (c-sweep)
+# - 6x6 grid, 단일 시드 100, λ=2/3/3.5 (14000 tick)
+# - C_VALUES 를 바꿔가며 ADT 곡선 비교 → c 항 유무/크기가 성능에 주는 영향 확인
+# - 산출물: result_aqpace_ctest_6by6.md / .png
+# =============================================================================
 import random
 import numpy as np
 import matplotlib
@@ -6,56 +12,49 @@ import matplotlib.pyplot as plt
 from simulator import Simulator
 from topology_grid import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACENCY
 
-SEED = 200
+SEED = 100
 
 TOPOLOGY_GRID = {'num_nodes': GRID_NUM_NODES, 'adjacency': GRID_ADJACENCY}
 
 # -------------------------------------------------------------------------
-# 파라미터 설정
+# 파라미터 설정 (AQRERM 논문 기준)
 # -------------------------------------------------------------------------
 ETA = 0.9
-K   = 0.5
+K   = 0.5           # AQRERM 논문 기준 — eta2 = k · R_x, k=0.5
 L   = 3
-C_VALUE = 0.3   # c 는 고정. 이 스크립트는 pfe_b_max 만 sweep.
 
-BASE_PARAMS = {'eta': ETA, 'k': K, 'L': L, 'c': C_VALUE}
+BASE_PARAMS = {'eta': ETA, 'k': K, 'L': L}
 
-# 단일 알고리즘 — pfe_c_pre_echo_tick
-ALGORITHM = 'pfe_c_pre_echo_tick'
+# 단일 알고리즘 — aqpace (매 tick 적립 변형)
+ALGORITHM = 'aqpace'
 
-# pfe_b_max sweep 설정
-B_MAX_VALUES = [0.2, 0.3, 0.4]
+# c-sweep 설정
+C_VALUES = [0, 0.3]
 
-# 적녹색약 친화 sequential colormap (viridis) — b_max 가 클수록 밝은 톤
-B_COLORS = plt.cm.viridis(np.linspace(0, 1, len(B_MAX_VALUES)))
+# 적녹색약 친화 sequential colormap (viridis) — c 가 클수록 밝은 톤
+C_COLORS = plt.cm.viridis(np.linspace(0, 1, len(C_VALUES)))
 
-# 점선 패턴 — 길게 (8 단위 on, 4 단위 off) 잘 보이게
-DASH_STYLE = (0, (8, 4))
-
-STAT_INTERVAL = 200
-MD_PATH = 'result_PCPET_maxTest_6by6.md'
+STAT_INTERVAL = 100
+MD_PATH = 'result_aqpace_ctest_6by6.md'
 
 EXPERIMENTS = [
-    # {'lam': 2, 'total_ticks': 80000, 'title': 'λ=2'},
-    {'lam': 3.5, 'total_ticks': 80000, 'title': 'λ=3.5'},
-    {'lam': 3.7, 'total_ticks': 80000, 'title': 'λ=3.7'},
-    # {'lam': 4, 'total_ticks': 14000, 'title': 'λ=4'},
+    # {'lam': 1, 'total_ticks': 14000, 'title': 'λ=1'},
+    {'lam': 2, 'total_ticks': 14000, 'title': 'λ=2'},
+    {'lam': 3, 'total_ticks': 14000, 'title': 'λ=3'},
+    {'lam': 3.5, 'total_ticks': 14000, 'title': 'λ=3.5'},
 ]
 
 
 # -------------------------------------------------------------------------
-# b_max sweep 실험: 3개 부하별 ADT 그래프 (각 부하에 7개 b_max 점선)
+# c-sweep 실험: 3개 부하별 ADT 그래프 (각 부하에 10개 c 값 점선)
 # -------------------------------------------------------------------------
 def run_all():
-    fig, axes = plt.subplots(1, len(EXPERIMENTS), figsize=(45, 8), squeeze=False)
+    fig, axes = plt.subplots(1, len(EXPERIMENTS), figsize=(30, 8), squeeze=False)
     axes = axes.flatten()  # EXPERIMENTS 가 1 개여도 1D 배열로 유지
-    fig.suptitle(
-        f"6x6 Grid — pfe_c_pre_echo_tick pfe_b_max sweep "
-        f"(c={C_VALUE}, L={L}, seed={SEED})"
-    )
+    fig.suptitle(f"6x6 Grid — aqpace c-sweep (L={L})")
 
     with open(MD_PATH, 'w', encoding='utf-8') as md:
-        md.write('# 6x6 Grid PFE_c_pre_echo_tick pfe_b_max sweep\n\n')
+        md.write('# 6x6 Grid AQPACE c-sweep\n\n')
 
         for ax, exp in zip(axes, EXPERIMENTS):
             lam = exp['lam']
@@ -63,15 +62,15 @@ def run_all():
             x_axis = np.arange(1, total_ticks // STAT_INTERVAL + 1) * STAT_INTERVAL
 
             md.write(f"## λ={lam} ({total_ticks} ticks)\n\n")
-            md.write("| pfe_b_max | generated | delivered | undelivered | delivery_rate |\n")
-            md.write("|-----------|-----------|-----------|-------------|---------------|\n")
+            md.write("| c | generated | delivered | undelivered | delivery_rate |\n")
+            md.write("|---|-----------|-----------|-------------|---------------|\n")
 
             print(f"\n=== λ={lam} ===")
-            for b_max, color in zip(B_MAX_VALUES, B_COLORS):
+            for c, color in zip(C_VALUES, C_COLORS):
                 random.seed(SEED)
                 np.random.seed(SEED)
-                params = {**BASE_PARAMS, 'pfe_b_max': b_max}
-                label = f"b_max={b_max}"
+                params = {**BASE_PARAMS, 'c': c}
+                label = f"c={c}"
                 print(f"  Running {label}...")
 
                 sim = Simulator(algorithm=ALGORITHM, params=params, seed=SEED, topology=TOPOLOGY_GRID)
@@ -79,11 +78,11 @@ def run_all():
 
                 gen, dlv, und = sim.total_generated, sim.total_delivered, sim.undelivered_count
                 rate = (dlv / gen * 100) if gen > 0 else 0.0
-                print(f"    {label:14s} generated={gen:6d}  delivered={dlv:6d}  "
+                print(f"    {label:10s} generated={gen:6d}  delivered={dlv:6d}  "
                       f"undelivered={und:6d}  delivery_rate={rate:5.1f}%")
-                md.write(f"| {b_max} | {gen} | {dlv} | {und} | {rate:.1f}% |\n")
+                md.write(f"| {c} | {gen} | {dlv} | {und} | {rate:.1f}% |\n")
 
-                # ---- T_est / T_max + PFE 진단 ----
+                # ---- T_est / T_max 1000-tick 간격 평균 (시간 흐름 진단) ----
                 t_est_series = getattr(sim, 't_est_series', None)
                 t_max_series = getattr(sim, 't_max_series', None)
                 if t_est_series and t_max_series:
@@ -97,9 +96,10 @@ def run_all():
                         float(np.mean(t_max_series[i:i + chunk_size]))
                         for i in range(0, chunk_size * n_chunks, chunk_size)
                     ]
-                    print(f"      [T_est ] {' '.join(f'{m:6.2f}' for m in t_est_chunks)}")
-                    print(f"      [T_max ] {' '.join(f'{m:6.2f}' for m in t_max_chunks)}")
+                    print(f"      [T_est ] {' '.join(f'{m:6.2f}' for m in t_est_chunks)}   (1000-tick 평균, 네트워크 avg)")
+                    print(f"      [T_max ] {' '.join(f'{m:6.2f}' for m in t_max_chunks)}   (1000-tick 평균, 네트워크 avg)")
 
+                    # ---- PFE 진단: Full Echo 발동 비율, 평균 누적 포인트 ----
                     fe_series = getattr(sim, 'pfe_full_echo_ratio_series', None)
                     tp_series = getattr(sim, 'pfe_total_point_series', None)
                     if fe_series and tp_series:
@@ -111,11 +111,11 @@ def run_all():
                             float(np.mean(tp_series[i:i + chunk_size]))
                             for i in range(0, chunk_size * n_chunks, chunk_size)
                         ]
-                        print(f"      [FE_rt ] {' '.join(f'{m:6.3f}' for m in fe_chunks)}")
-                        print(f"      [Point ] {' '.join(f'{m:6.2f}' for m in tp_chunks)}")
+                        print(f"      [FE_rt ] {' '.join(f'{m:6.3f}' for m in fe_chunks)}   (1000-tick 평균, Full Echo 발동 비율)")
+                        print(f"      [Point ] {' '.join(f'{m:6.2f}' for m in tp_chunks)}   (1000-tick 평균, 노드별 total_point 평균)")
 
-                # 긴 점선 (8 on / 4 off) — viridis 톤
-                ax.plot(x_axis, adt, label=label, color=color)
+                # 점선 (':' = dotted) — viridis 톤
+                ax.plot(x_axis, adt, label=label, color=color, linestyle=':')
 
             md.write("\n")
             ax.set_title(exp['title'])
@@ -125,7 +125,7 @@ def run_all():
             ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    filename = 'result_PCPET_maxTest_6by6.png'
+    filename = 'result_aqpace_ctest_6by6.png'
     plt.savefig(filename, dpi=150)
     print(f"\n결과 저장: {filename}")
     plt.close()
