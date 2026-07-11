@@ -1,8 +1,20 @@
 # =============================================================================
+# [링크 절단 시나리오 스크립트 — 이번 연구 마감 범위 제외]
+#
+# 이 파일은 연구 진행 중 링크 장애 발생 시 Q-routing / AQFE / AQRERM / AQPACE
+# 4종 알고리즘이 얼마나 빠르게 대체 경로를 학습하는지 확인하기 위해 작성되었습니다.
+#
+# 이번 논문 마감 범위에는 해당 실험을 포함하지 않기로 결정하였으므로, 파일 하단의
+# 실행 블록(if __name__ == '__main__')을 주석 처리하여 실수로 실행되지 않도록
+# 비활성화해 두었습니다.
+#
+# 이후 연구에서 재활용이 필요하면 하단 실행 블록 주석을 해제하고,
+# simulator.py 내 링크 절단 관련 주석 처리 구간도 함께 해제하십시오.
+#
 # [요약] 링크 절단 회복력 비교 — 4종 알고리즘, tick 4000 에서 링크 절단
 # - 6x6 grid, 10 시드, 시나리오 2개: top bridge (14,15) / bottom bridge (2,3) 절단
 # - Pre-cut / Post-cut ADT 를 분리 집계 → 토폴로지 변화 적응력 측정
-# - 산출물: result_compare_PFE_link_cut.md / .png
+# - 산출물: result_compare_AQPACE_link_cut.md / .png
 # =============================================================================
 import random
 import numpy as np
@@ -48,7 +60,7 @@ COLORS = {
 SEEDS = list(range(100, 1001, 100))  # [100, 200, ..., 1000]
 
 STAT_INTERVAL = 100
-MD_PATH = 'result_compare_PFE_link_cut.md'
+MD_PATH = 'result_compare_AQPACE_link_cut.md'
 
 # -------------------------------------------------------------------------
 # 링크 절단 시나리오 (main_link_cut.py 기반)
@@ -173,7 +185,7 @@ def run_all():
                 ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    filename = 'result_compare_PFE_link_cut.png'
+    filename = 'result_compare_AQPACE_link_cut.png'
     plt.savefig(filename, dpi=150)
     print(f"\n결과 저장: {filename}")
     plt.close()
@@ -181,5 +193,10 @@ def run_all():
     print(f"\n로그: {MD_PATH}")
 
 
-if __name__ == '__main__':
-    run_all()
+# =====================================================================
+# [실행 블록 — 이번 연구 마감 범위 제외]
+# 링크 절단 시나리오 실험을 비활성화합니다. 재활성화 시 아래 주석을 해제하고
+# simulator.py 내 링크 절단 관련 주석 처리 구간도 함께 해제하십시오.
+# =====================================================================
+# if __name__ == '__main__':
+#     run_all()

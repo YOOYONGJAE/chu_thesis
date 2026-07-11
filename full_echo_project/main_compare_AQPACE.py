@@ -3,7 +3,7 @@
 # - 6x6 grid, 10 시드 sweep, λ 별 ADT median + IQR 그래프 + markdown 결과표
 # - ALGORITHMS 주석 토글로 원하는 조합만 실행 가능
 # - 구세대 변형 포함 버전은 legacy_algorithm_files/main_compare_PFE.py 참조
-# - 산출물: result_compare_PFE.md / .png
+# - 산출물: result_compare_AQPACE.md / .png
 # =============================================================================
 import random
 import numpy as np
@@ -55,7 +55,7 @@ COLORS = {
 SEEDS = list(range(100, 1001, 100))  # [100, 200, ..., 1000]
 
 STAT_INTERVAL = 100
-MD_PATH = 'result_compare_PFE.md'
+MD_PATH = 'result_compare_AQPACE.md'
 
 EXPERIMENTS = [
     # {'lam': 2, 'total_ticks': 40000, 'title': 'λ=2'},
@@ -158,7 +158,7 @@ def run_all():
             ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    filename = 'result_compare_PFE.png'
+    filename = 'result_compare_AQPACE.png'
     plt.savefig(filename, dpi=150)
     print(f"\n결과 저장: {filename}")
     plt.close()

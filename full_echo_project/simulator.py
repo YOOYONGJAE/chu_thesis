@@ -1,6 +1,6 @@
 # =============================================================================
 # [요약] tick 기반 네트워크 시뮬레이터 — 패킷 생성 / 라우팅 / 통계 집계
-# - 4종 (Q-routing / AQFE / AQRERM / AQPACE) 전용 정리판, 링크 절단 시나리오 지원
+# - 4종 (Q-routing / AQFE / AQRERM / AQPACE) 전용 정리판
 # - 진단 시리즈: ADT / 큐 길이 / T_est / T_max / AQPACE 포인트·에코 발동 비율
 # - RL 컨트롤러 연동, T_max 가속 감쇠, AdE 진단 등은
 #   legacy_algorithm_files/simulator.py 에 보존
@@ -37,28 +37,38 @@ class Simulator:
                 if (v, u) not in self.link_usage:
                     self.link_usage[(u, v)] = 0
 
-    # -------------------------------------------------------------------------
-    # 링크 절단 — 양방향 인접 리스트에서 서로 제거
-    # -------------------------------------------------------------------------
-    def cut_link(self, u, v):
-        if v in self.nodes[u].neighbors:
-            self.nodes[u].neighbors.remove(v)
-        if u in self.nodes[v].neighbors:
-            self.nodes[v].neighbors.remove(u)
+    # =========================================================================
+    # [링크 절단 기능 — 이번 연구 마감 범위 제외]
+    # 연구 진행 중 링크 장애 발생 시 각 알고리즘의 라우팅 적응력을 확인하기 위해
+    # 추가된 기능입니다. 이번 논문 마감 범위에는 포함하지 않으므로 주석 처리하여
+    # 제외합니다. 재활성화가 필요하면 아래 주석을 해제하고, run() 내의 link_cuts
+    # 관련 주석 처리 구간도 함께 해제하십시오.
+    # =========================================================================
+    # def cut_link(self, u, v):
+    #     if v in self.nodes[u].neighbors:
+    #         self.nodes[u].neighbors.remove(v)
+    #     if u in self.nodes[v].neighbors:
+    #         self.nodes[v].neighbors.remove(u)
 
     # -------------------------------------------------------------------------
     # 시뮬레이션 실행
     # lam          : Poisson 파라미터 (네트워크 전체 tick당 평균 패킷 생성 수)
     # total_ticks  : 총 tick 수
     # stat_interval: 통계 집계 주기 (tick)
-    # link_cuts    : [(tick, u, v)] — 단일 cut 만 사용 (없으면 None / 빈 리스트)
+    # link_cuts    : [(tick, u, v)] — 현재 비활성 (링크 절단 기능 주석 처리 참조)
     # 반환: ADT 리스트 (stat_interval tick마다 1개)
     # -------------------------------------------------------------------------
     def run(self, lam, total_ticks=10000, stat_interval=100, link_cuts=None):
-        if link_cuts:
-            cut_tick, cut_u, cut_v = link_cuts[0]
-        else:
-            cut_tick = cut_u = cut_v = None
+        # =====================================================================
+        # [링크 절단 초기화 — 이번 연구 마감 범위 제외]
+        # link_cuts 파라미터를 실제로 처리하는 초기화 블록입니다.
+        # cut_link() 메서드 주석 참조. 재활성화 시 아래 주석을 해제하십시오.
+        # =====================================================================
+        # if link_cuts:
+        #     cut_tick, cut_u, cut_v = link_cuts[0]
+        # else:
+        #     cut_tick = cut_u = cut_v = None
+        cut_tick = cut_u = cut_v = None  # 링크 절단 비활성 — 항상 None 고정
 
         adt_series = []
         queue_len_series = []   # stat_interval 시점의 모든 노드 queue 길이 합
@@ -70,10 +80,13 @@ class Simulator:
         pfe_full_echo_ratio_series = []  # 윈도우 동안 Full Echo 발동 / 라우팅 호출
         window_delivered = []
 
-        # 절단 전/후 분리 link_usage — self.link_usage(전체) 와 별개로 추적
-        # cut 없으면 pre 에만 누적되고 post 는 빈 dict 로 남음
-        link_usage_pre_cut  = {k: 0 for k in self.link_usage}
-        link_usage_post_cut = {k: 0 for k in self.link_usage}
+        # =====================================================================
+        # [절단 전/후 link_usage 분리 추적 — 이번 연구 마감 범위 제외]
+        # 링크 절단 시점을 기준으로 트래픽 분포 변화를 추적하는 집계 변수입니다.
+        # 재활성화 시 아래 주석을 해제하십시오.
+        # =====================================================================
+        # link_usage_pre_cut  = {k: 0 for k in self.link_usage}
+        # link_usage_post_cut = {k: 0 for k in self.link_usage}
 
         # 도달 여부 카운터
         total_generated = 0
@@ -81,10 +94,15 @@ class Simulator:
 
         for tick in range(total_ticks):
 
-            # 0. 링크 차단 — 예약된 단일 cut tick 도달 시 1회 실행
-            if tick == cut_tick:
-                self.cut_link(cut_u, cut_v)
-                print(f"  [tick {tick}] 링크 ({cut_u}, {cut_v}) 차단")
+            # =====================================================================
+            # [링크 차단 적용 — 이번 연구 마감 범위 제외]
+            # 지정된 tick에 링크를 실제로 제거하는 블록입니다.
+            # 재활성화 시 아래 주석을 해제하고 cut_link() 및 초기화 블록도 함께
+            # 해제하십시오.
+            # =====================================================================
+            # if tick == cut_tick:
+            #     self.cut_link(cut_u, cut_v)
+            #     print(f"  [tick {tick}] 링크 ({cut_u}, {cut_v}) 차단")
 
             # 1. 지난 tick까지 들어온 패킷들을 각 노드 queue로 이동
             #    (이번 tick에 도착한 패킷은 이번 tick 처리 대상에서 제외)
@@ -118,11 +136,16 @@ class Simulator:
                 else:
                     link = (i, next_hop) if (i, next_hop) in self.link_usage else (next_hop, i)
                     self.link_usage[link] += 1
-                    # 절단 전/후 분리 카운트
-                    if cut_tick is None or tick < cut_tick:
-                        link_usage_pre_cut[link] += 1
-                    else:
-                        link_usage_post_cut[link] += 1
+                    # =====================================================================
+                    # [절단 전/후 분리 카운트 — 이번 연구 마감 범위 제외]
+                    # 링크 사용량을 절단 시점 기준으로 pre/post 로 나눠 기록합니다.
+                    # 재활성화 시 아래 주석과 link_usage_pre/post_cut 초기화 블록을
+                    # 함께 해제하십시오.
+                    # =====================================================================
+                    # if cut_tick is None or tick < cut_tick:
+                    #     link_usage_pre_cut[link] += 1
+                    # else:
+                    #     link_usage_post_cut[link] += 1
                     self.nodes[next_hop].incoming.append(pkt)
 
             # 2.5 AQPACE per-tick 포인트 적립 — 모든 노드 매 tick
@@ -183,7 +206,11 @@ class Simulator:
         self.undelivered_count = sum(
             len(node.queue) + len(node.incoming) for node in self.nodes
         )
-        # 절단 전/후 분리 link_usage 노출 (cut 없으면 post 는 모두 0)
-        self.link_usage_pre_cut  = link_usage_pre_cut
-        self.link_usage_post_cut = link_usage_post_cut
+        # =====================================================================
+        # [절단 전/후 link_usage 결과 노출 — 이번 연구 마감 범위 제외]
+        # 재활성화 시 아래 주석과 link_usage_pre/post_cut 초기화·집계 블록을
+        # 함께 해제하십시오.
+        # =====================================================================
+        # self.link_usage_pre_cut  = link_usage_pre_cut
+        # self.link_usage_post_cut = link_usage_post_cut
         return adt_series

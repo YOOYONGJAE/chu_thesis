@@ -1,8 +1,8 @@
 # =============================================================================
 # [요약] NSFNET 토폴로지 일반화 검증 — AQRERM vs AQPACE 비교
 # - 6x6 grid 가 아닌 실제 백본망 (NSFNET) 에서 10 시드, λ 별 ADT median + IQR 비교
-# - "grid 특화 아님" 을 보이는 일반화 증거 생산 (main_compare_PFE 의 NSFNET 판)
-# - 산출물: result_compare_PFE_nsfnet.md / .png
+# - "grid 특화 아님" 을 보이는 일반화 증거 생산 (main_compare_AQPACE 의 NSFNET 판)
+# - 산출물: result_compare_AQPACE_nsfnet.md / .png
 # =============================================================================
 import random
 import numpy as np
@@ -48,7 +48,7 @@ COLORS = {
 SEEDS = list(range(100, 1001, 100))  # [100, 200, ..., 1000]
 
 STAT_INTERVAL = 100
-MD_PATH = 'result_compare_PFE_nsfnet.md'
+MD_PATH = 'result_compare_AQPACE_nsfnet.md'
 
 EXPERIMENTS = [
     # {'lam': 1, 'total_ticks': 14000, 'title': 'λ=1'},
@@ -152,7 +152,7 @@ def run_all():
             ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    filename = 'result_compare_PFE_nsfnet.png'
+    filename = 'result_compare_AQPACE_nsfnet.png'
     plt.savefig(filename, dpi=150)
     print(f"\n결과 저장: {filename}")
     plt.close()
