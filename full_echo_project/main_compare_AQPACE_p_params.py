@@ -1,16 +1,12 @@
-"""
-[요약] AQPACE 파라미터 자동 튜닝 — c, pfe_gr, pfe_b_max 세 파라미터 조합을
-Bayesian Optimization (gp_minimize, 40회 평가) 으로 탐색하는 스크립트.
-λ=3.6, 10 시드 평가. 현재 BASE_PARAMS 의 c=0.22 / b_max=0.5 가 이 결과에서 나옴.
-
-평가 점수 식 :
-    score_seed = mean(ADT[0:half]) + mean(ADT[half:]) + 0.5 * std(ADT[half:])
-    score      = median(score_seed for seed in EVAL_SEEDS)
-
-탐색 후 결과는 수렴 곡선 + 3D 산점도 1×2 dashboard 로 시각화.
-
-필요 라이브러리 : scikit-optimize (pip install scikit-optimize)
-"""
+# =============================================================================
+# [요약] AQPACE 파라미터 자동 튜닝 — c / pfe_gr / pfe_b_max 를 BO 로 탐색
+# - 6x6 grid, λ=3.6, 10 시드 평가, gp_minimize 40회 (random 10 + BO 30)
+# - 평가 점수: score_seed = mean(ADT 전반) + mean(ADT 후반) + 0.5·std(ADT 후반),
+#   score = 시드 간 median (작을수록 좋음)
+# - 현재 BASE_PARAMS 의 c=0.22 / pfe_b_max=0.5 가 이 탐색의 best 조합 출처
+# - 필요 라이브러리: scikit-optimize (pip install scikit-optimize)
+# - 산출물: 수렴 곡선 + 3D 산점도 dashboard (png) / 평가 이력 md
+# =============================================================================
 
 import random
 import time

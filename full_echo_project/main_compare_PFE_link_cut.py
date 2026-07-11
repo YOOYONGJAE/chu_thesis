@@ -1,8 +1,8 @@
 # =============================================================================
-# [요약] 링크 절단 회복력 비교 — 6x6 grid, 10 시드, tick 4000 에서 링크 절단
-# - 시나리오 2개: top bridge (14,15) 절단 / bottom bridge (2,3) 절단
+# [요약] 링크 절단 회복력 비교 — 4종 알고리즘, tick 4000 에서 링크 절단
+# - 6x6 grid, 10 시드, 시나리오 2개: top bridge (14,15) / bottom bridge (2,3) 절단
 # - Pre-cut / Post-cut ADT 를 분리 집계 → 토폴로지 변화 적응력 측정
-# - AQRERM vs AQPACE 정면 비교 + 양쪽의 L 유무 ablation 에 사용
+# - 산출물: result_compare_PFE_link_cut.md / .png
 # =============================================================================
 import random
 import numpy as np

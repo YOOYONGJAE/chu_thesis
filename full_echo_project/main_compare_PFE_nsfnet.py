@@ -1,7 +1,8 @@
 # =============================================================================
-# [요약] NSFNET 토폴로지 일반화 검증 — AQRERM vs AQPACE, 10 시드 sweep
-# - 6x6 grid 가 아닌 실제 백본망 (NSFNET) 에서 λ 별 ADT median + IQR 비교
+# [요약] NSFNET 토폴로지 일반화 검증 — AQRERM vs AQPACE 비교
+# - 6x6 grid 가 아닌 실제 백본망 (NSFNET) 에서 10 시드, λ 별 ADT median + IQR 비교
 # - "grid 특화 아님" 을 보이는 일반화 증거 생산 (main_compare_PFE 의 NSFNET 판)
+# - 산출물: result_compare_PFE_nsfnet.md / .png
 # =============================================================================
 import random
 import numpy as np

@@ -1,8 +1,9 @@
 # =============================================================================
-# [요약] 계보 비교 허브 — Q-routing / AQFE / AQRERM / AQPACE, 6x6 grid
-# - 10 시드 sweep, λ 별 ADT median + IQR 그래프 + markdown 결과표
+# [요약] 계보 비교 허브 — Q-routing / AQFE / AQRERM / AQPACE 4종 비교
+# - 6x6 grid, 10 시드 sweep, λ 별 ADT median + IQR 그래프 + markdown 결과표
 # - ALGORITHMS 주석 토글로 원하는 조합만 실행 가능
-# - 구세대 변형 (ablation 등) 포함 버전은 legacy_algorithm_files/main_compare_PFE.py 참조
+# - 구세대 변형 포함 버전은 legacy_algorithm_files/main_compare_PFE.py 참조
+# - 산출물: result_compare_PFE.md / .png
 # =============================================================================
 import random
 import numpy as np

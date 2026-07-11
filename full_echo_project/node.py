@@ -1,8 +1,8 @@
 # =============================================================================
-# node.py — 4종 알고리즘 전용 정리판
-# - Q-routing / AQFE / AQRERM / AQPACE 만 포함
+# [요약] 노드 구현 — Packet + Node (Q 테이블, 4종 라우팅 알고리즘)
+# - Q-routing / AQFE / AQRERM / AQPACE 만 포함하는 정리판
 # - 구세대 변형 (PFE 계열, AQRERM 하드코딩 시리즈, RL 컨트롤러 연동 등) 의
-#   전체 구현은 legacy_algorithm_files/node.py 에 보존되어 있음
+#   전체 구현은 legacy_algorithm_files/node.py 에 보존
 # =============================================================================
 import math
 import random
@@ -228,7 +228,7 @@ class Node:
         return y_star
 
     # -------------------------------------------------------------------------
-    # AQPACE — Adaptive Q-routing with Point-budgeted Advance Congestion-priced Echo
+    # AQPACE — Adaptive Q-routing with Point-budgeted Advance Congestion-aware Echo
     #
     # 포인트 예산 게이트 + pre-echo (echo → 선정 → 학습) + 큐 페널티 (c·queue).
     #   - 적립: simulator tick 루프가 tick_accumulate_point() 로 매 tick gr 적립

@@ -1,18 +1,15 @@
-"""
-[요약] 발표용 최종 지표 비교 — AQRERM vs AQPACE, 10 시드, λ=2/3.5.
-그래프가 아니라 5개 정량 지표 요약표 (markdown + 콘솔) 생산이 목적.
-
-5 가지 metric :
-  1. 수렴 시간 (convergence time) : ADT 가 처음으로 threshold 아래로 내려간 tick
-  2. Steady-state ADT median        : 뒷쪽 절반 평균, 시드 간 median
-  3. 누적 AUC                       : 전체 ADT 시계열의 합 (시드 간 median)
-  4. Worst-case spike               : 시드별 max ADT, 시드 간 median
-  5. CV (시드 일관성)               : SS ADT 의 std / mean
-
-threshold 는 AQPACE 의 SS median × 1.2 (양 알고리즘에 공통 적용).
-
-main_compare_PFE.py 와 별도 파일이며 기존 파일은 건드리지 않음.
-"""
+# =============================================================================
+# [요약] 발표용 최종 지표 비교 — AQRERM vs AQPACE 5개 정량 지표 요약표
+# - 6x6 grid, 10 시드, λ=2/3.5 (20000 tick). 그래프가 아니라 지표표 생산이 목적
+# - 지표: 
+# ① 수렴 시간 (ADT 가 threshold 를 처음 하회한 tick) 
+# ② SS ADT median
+# ③ 누적 AUC 
+# ④ Worst-case spike (시드별 max 의 median) 
+# ⑤ CV (시드 일관성)
+# - threshold = AQPACE SS median × 1.2 (양 알고리즘에 공통 적용)
+# - 산출물: result_compare_AQPACE_final.md / .png
+# =============================================================================
 import random
 import numpy as np
 import matplotlib
@@ -22,7 +19,7 @@ from simulator import Simulator
 from topology_grid import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACENCY
 
 # -------------------------------------------------------------------------
-# 파라미터 (main_compare_PFE 와 동일)
+# 파라미터 (main_compare_AQPACE 와 동일)
 # -------------------------------------------------------------------------
 ETA = 0.9
 K   = 0.5
@@ -39,7 +36,7 @@ LABELS = {
     'aqpace': 'AQPACE',
 }
 COLORS = {
-    'aqrerm':              '#CC79A7',  # 분홍보라 (baseline)
+    'aqrerm':              "#FF0000",  # 분홍보라 (baseline)
     'aqpace': '#56B4E9',  # 하늘색 (메인 후보)
 }
 
@@ -50,13 +47,13 @@ TOTAL_TICKS = 20000
 # threshold 비율 (수렴 시간 정의에 사용)
 CONVERGENCE_THRESHOLD_RATIO = 1.2
 
-MD_PATH  = 'result_compare_PFE_final.md'
-PNG_PATH = 'result_compare_PFE_final.png'
+MD_PATH  = 'result_compare_AQPACE_final.md'
+PNG_PATH = 'result_compare_AQPACE_final.png'
 
 EXPERIMENTS = [
     {'lam': 2, 'total_ticks': TOTAL_TICKS, 'title': 'λ=2.0'},
     {'lam': 3.5, 'total_ticks': TOTAL_TICKS, 'title': 'λ=3.5'},
-    # {'lam': 3.8, 'total_ticks': TOTAL_TICKS, 'title': 'λ=3.8'},
+    {'lam': 3.8, 'total_ticks': TOTAL_TICKS, 'title': 'λ=3.8'},
 ]
 
 
@@ -179,12 +176,22 @@ def run_lambda(ax, lam, total_ticks, md):
             'conv_tick':  conv_tick,
         }
 
-    # ---- 시각화 : median 실선 + IQR 음영 ----
-    for algo in ALGORITHMS:
-        ax.plot(x_axis, results[algo]['median'],
-                label=LABELS[algo], color=COLORS[algo], linewidth=2.0)
-        ax.fill_between(x_axis, results[algo]['q25'], results[algo]['q75'],
-                        color=COLORS[algo], alpha=0.2)
+    # ---- 시각화 : median 실선 + IQR 오차 막대 (일정 간격 세로선) ----
+    # spacing : 전체 윈도우 수를 10등분 → 알고리즘당 막대 약 10개
+    #           (200 윈도우 기준 20 윈도우 = 2000 tick 간격)
+    # offset  : 알고리즘마다 시작점을 spacing/알고리즘수 만큼 어긋내서
+    #           서로 다른 알고리즘의 막대가 같은 x 위치에 겹치지 않게 함
+    spacing = max(1, len(x_axis) // 10)
+    for idx, algo in enumerate(ALGORITHMS):
+        median = results[algo]['median']
+        # yerr 는 (아래 길이, 위 길이) 두 행 — median 기준 비대칭 IQR 범위
+        yerr = np.vstack([median - results[algo]['q25'],
+                          results[algo]['q75'] - median])
+        offset = idx * spacing // len(ALGORITHMS)
+        ax.errorbar(x_axis, median, yerr=yerr,
+                    errorevery=(offset, spacing),
+                    capsize=3, elinewidth=1.2, capthick=1.2,
+                    label=LABELS[algo], color=COLORS[algo], linewidth=2.0)
 
     # ---- threshold 수평선 ----
     ax.axhline(y=threshold, color='gray', linestyle='--', linewidth=1.2,

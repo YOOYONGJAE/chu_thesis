@@ -1,8 +1,9 @@
 # =============================================================================
-# simulator.py — 4종 알고리즘 전용 정리판
-# - Q-routing / AQFE / AQRERM / AQPACE 만 지원
-# - RL 컨트롤러 (EchoController / LTrainController / LCloseController) 연동,
-#   T_max 가속 감쇠, AdE 진단 시리즈 등은 legacy_algorithm_files/simulator.py 에 보존
+# [요약] tick 기반 네트워크 시뮬레이터 — 패킷 생성 / 라우팅 / 통계 집계
+# - 4종 (Q-routing / AQFE / AQRERM / AQPACE) 전용 정리판, 링크 절단 시나리오 지원
+# - 진단 시리즈: ADT / 큐 길이 / T_est / T_max / AQPACE 포인트·에코 발동 비율
+# - RL 컨트롤러 연동, T_max 가속 감쇠, AdE 진단 등은
+#   legacy_algorithm_files/simulator.py 에 보존
 # =============================================================================
 import math
 import random
