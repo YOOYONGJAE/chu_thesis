@@ -27,34 +27,34 @@ ALGORITHMS = [
     'aqrerm',
     # 'aqrerm_c',
     # 'aqrerm_c_pre',
-    # 'pfe_echo_tick',
-    # 'pfe_c_echo_tick',
-    # 'pfe_pre_echo_tick',
+    # 'aqpace_no_pre_no_queue',
+    # 'aqpace_no_pre',
+    # 'aqpace_no_queue',
     'aqpace', # ★ 메인 포커스: 큐 항 (c · queue) 추가한 PFE 변형
-    # 'fe_c_pre_echo',
+    # 'aqpace_no_point',
     # 'aqpace_no_L',
 ]
 LABELS = {
-    'pfe_echo_tick':            'PFE_echo_tick',
-    'pfe_pre_echo_tick':        'PFE_pre_echo_tick',
+    'aqpace_no_pre_no_queue':            'AQPACE(-pre,-queue)',
+    'aqpace_no_queue':        'AQPACE(-queue)',
     'aqrerm_c':                  'AQRERM_c',
     'aqrerm':                   'AQRERM',
-    'pfe_c_echo_tick':          'PFE_c_echo_tick',
+    'aqpace_no_pre':          'AQPACE(-pre)',
     'aqpace':      'AQPACE',
     'aqrerm_c_pre':             'AQRERM_c_pre_RERM',
-    'fe_c_pre_echo':            'FE_c_pre_echo',
-    'aqpace_no_L': 'AQPACE_noL',
+    'aqpace_no_point':            'AQPACE(-point)',
+    'aqpace_no_L': 'AQPACE(-L)',
 }
 # 적녹색약 친화 (Wong palette)
 COLORS = {
-    'pfe_echo_tick':            '#0072B2',  # 파랑
-    'pfe_pre_echo_tick':        '#E69F00',  # 주황
+    'aqpace_no_pre_no_queue':            '#0072B2',  # 파랑
+    'aqpace_no_queue':        '#E69F00',  # 주황
     'aqrerm_c':                  '#009E73',  # 청록
     'aqrerm':                   '#CC79A7',  # 분홍보라
-    'pfe_c_echo_tick':          '#D55E00',  # 주홍 (vermillion)
+    'aqpace_no_pre':          '#D55E00',  # 주홍 (vermillion)
     'aqpace':      '#56B4E9',  # 하늘색
     'aqrerm_c_pre':             '#F0E442',  # 노랑
-    'fe_c_pre_echo':            '#000000',  # 검정 (always-FE 강조)
+    'aqpace_no_point':            '#000000',  # 검정 (always-FE 강조)
     'aqpace_no_L': "#0400FF",  # 회색 (L=0, no Route Memory)
 }
 

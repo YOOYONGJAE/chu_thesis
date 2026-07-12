@@ -83,10 +83,10 @@ class Node:
         self.tick_accum_enabled = algorithm in (
             'aqpace',
             'aqpace_l0',
-            'pfe_then_aqrerm',
-            'pfe_pre_echo_tick',
-            'pfe_echo_tick',
-            'pfe_c_echo_tick',
+            'aqpace_then_aqrerm',
+            'aqpace_no_queue',
+            'aqpace_no_pre_no_queue',
+            'aqpace_no_pre',
             'aqpace_no_L',
         )
 
@@ -266,28 +266,42 @@ class Node:
             return self._route_pfe_c_ade(packet, current_tick, all_nodes)
         
             # ★ PFE_c_pre_echo: PFE_c_AdE 의 변형 — echo 와 노드 선정의 순서를 뒤집음
-        elif self.algorithm == 'pfe_c_pre_echo':
-            # 포인트 충분 시: Full Echo 먼저 → fresh Score 로 y_star 선정 → eta/eta2 학습
-            # 포인트 부족 시: stale 캐시로 y_star 선정 → y_star 만 update
+        elif self.algorithm == 'aqpace_route_accum':
+            # [AQPACE ablation] tick 기반 포인트 적립 → 라우팅 호출 시에만 적립으로 변경.
+            # 포인트 게이트 / 선에코 / c·큐 페널티 / Route Memory 는 AQPACE 와 동일.
+            # 패킷이 없어 라우팅 안 한 tick 에는 포인트가 쌓이지 않는 전신 버전.
+            # 실험 의도: tick 단위 균등 적립(AQPACE)이 라우팅 빈도 기반 적립보다 유리한지 확인.
             return self._route_pfe_c_pre_echo(packet, current_tick, all_nodes)
-        
-        elif self.algorithm == 'pfe_c_pre_echo_l0':
-            # PFE_c_pre_echo + memory_cut_tick (보통 7000) 이후 L=0 강제 (link_cut 시나리오용)
+
+        elif self.algorithm == 'aqpace_route_accum_no_L':
+            # [AQPACE ablation] aqpace_route_accum + link_cut 시점(보통 7000 tick) 이후 L=0 강제.
+            # 실험 의도: 링크 절단 시나리오에서 Route Memory 없이 라우팅 호출 기반 적립의 적응 속도 확인.
             return self._route_pfe_c_pre_echo_l0(packet, current_tick, all_nodes)
+
         elif self.algorithm == 'aqpace':
-            # PFE_c_pre_echo 변형 — 라우팅 호출과 무관하게 매 tick 모든 노드에서 적립
-            # (적립은 simulator 의 tick_accumulate_point() 가 담당; 본문은 적립 X)
+            # [AQPACE 풀버전] 포인트 게이트 + 선에코(echo→선정→학습) + c·큐 페널티 + Route Memory(L).
+            # tick_accumulate_point() 로 simulator 가 매 tick 모든 노드에 포인트 균등 적립.
             return self._route_aqpace(packet, current_tick, all_nodes)
-        elif self.algorithm == 'pfe_pre_echo_tick':
-            # AQPACE 변형 — 큐 길이 항 (c · queue) 완전 제거.
-            # 선택은 t / Q 만으로, 적립은 동일하게 tick 단위.
+
+        elif self.algorithm == 'aqpace_no_queue':
+            # [AQPACE ablation] c·큐 페널티 항(c·queue_n) 제거.
+            # y_star 선정 시 Score = t_n 만 사용 (큐 혼잡 정보 미반영).
+            # 포인트 게이트 / 선에코 / Route Memory / tick 적립은 AQPACE 와 동일.
+            # 실험 의도: 이웃 큐 길이 정보가 수렴 속도 및 SS ADT 개선에 얼마나 기여하는지 확인.
             return self._route_pfe_pre_echo_tick(packet, current_tick, all_nodes)
-        elif self.algorithm == 'pfe_echo_tick':
-            # select-first PFE — AQRERM 순서로 stale Q 선택 후 PFE 포인트 게이트 echo.
-            # 큐 페널티 c 없음.
+
+        elif self.algorithm == 'aqpace_no_pre_no_queue':
+            # [AQPACE ablation] 선에코 순서 변경(select-first) + c·큐 페널티 제거.
+            # stale Q 로 먼저 y_star 선정 → 포인트 충분 시 echo 실행 (AQPACE 의 반대 순서).
+            # 큐 페널티도 없으므로 AQPACE 대비 두 요소 동시 제거.
+            # 실험 의도: 선에코 순서와 큐 페널티를 모두 제거했을 때의 성능 하한 측정.
             return self._route_pfe_echo_tick(packet, current_tick, all_nodes)
-        elif self.algorithm == 'pfe_c_echo_tick':
-            # PFE_echo_tick + 선택 식에 c · last_known_queue 추가 (AQRERM_c 패턴).
+
+        elif self.algorithm == 'aqpace_no_pre':
+            # [AQPACE ablation] 선에코 순서만 변경(select-first), c·큐 페널티는 유지.
+            # stale Q + c·last_known_queue 로 먼저 y_star 선정 → 포인트 충분 시 echo.
+            # AQPACE 는 echo → fresh Score → 선정 순이지만 이 변형은 선정 → echo 순.
+            # 실험 의도: 에코를 먼저 해 fresh 정보로 선정하는 것(AQPACE)의 우위 여부 확인.
             return self._route_pfe_c_echo_tick(packet, current_tick, all_nodes)
         elif self.algorithm == 'aqrerm_c_pre':
             # AQRERM_c 의 pre-echo 변형 — 랜덤 echo (이전 y* 무조건 포함) 먼저 →
@@ -297,26 +311,37 @@ class Node:
             # AQRERM 의 pre-echo 변형 (c 없음) — 랜덤 echo (이전 y* 보장) →
             # fresh t 만으로 y* 선택 → 차등 update.
             return self._route_aqrerm_pre(packet, current_tick, all_nodes)
-        elif self.algorithm == 'fe_c_pre_echo':
-            # aqpace 에서 PFE 포인트 시스템 제거 — 매 라우팅 무조건 full echo.
+        elif self.algorithm == 'aqpace_no_point':
+            # [AQPACE ablation] 포인트 게이트 시스템 완전 제거.
+            # 매 라우팅마다 무조건 Full Echo 실행 (포인트 잔액 무관).
+            # 선에코 순서 / c·큐 페널티 / Route Memory 는 AQPACE 와 동일.
+            # 실험 의도: 포인트 게이트(에코 빈도 제어)가 없을 때 echo 비용 대비 성능 확인.
+            #   echo 비용이 0인 현재 모델에서는 AQPACE 와 성능이 같거나 더 나아야 함 —
+            #   차이가 있다면 포인트 게이트의 간접 효과(학습 속도 조절)를 의심할 수 있음.
             return self._route_fe_c_pre_echo(packet, current_tick, all_nodes)
+
         elif self.algorithm == 'aqpace_no_L':
-            # aqpace + L=0 강제 (Route Memory 완전 비활성).
-            # 기존 _l0 패턴과 동일하나 cut_tick 조건 없이 항상 L=0.
+            # [AQPACE ablation] Route Memory 완전 비활성 (L=0 항상 강제).
+            # 포인트 게이트 / 선에코 / c·큐 페널티 / tick 적립은 AQPACE 와 동일.
+            # 실험 의도: Route Memory(최근 L 홉 방문 노드 제외)가 루프 억제 및
+            #   수렴 속도에 기여하는 정도 확인.
             original_L = self.params['L']
             self.params['L'] = 0
             try:
                 return self._route_aqpace(packet, current_tick, all_nodes)
             finally:
                 self.params['L'] = original_L
+
         elif self.algorithm == 'aqpace_l0':
-            # AQPACE + memory_cut_tick (보통 7000) 이후 L=0 강제 (link_cut 시나리오용)
+            # [링크 절단 시나리오용] AQPACE + link_cut 시점(보통 7000 tick) 이후 L=0 강제.
+            # 실험 의도: 링크 절단 후 Route Memory 가 대체 경로 재학습을 방해하는지 확인.
             return self._route_aqpace_l0(packet, current_tick, all_nodes)
-        elif self.algorithm == 'pfe_then_aqrerm':
-            # Hybrid: switch_tick 이전엔 AQPACE, 이후엔 AQRERM 로 전환.
-            # Q 테이블은 그대로 유지되므로 PFE 가 채워둔 추정치를 AQRERM 이 이어받음.
-            # 적립은 PFE 단계에서 simulator 가 tick 마다 진행하고, AQRERM 단계에서도
-            # 계속 적립되지만 AQRERM 이 total_point 를 안 읽으므로 영향 없음 (낭비만).
+
+        elif self.algorithm == 'aqpace_then_aqrerm':
+            # [하이브리드] switch_tick 이전엔 AQPACE 로 초기 학습, 이후엔 AQRERM 으로 전환.
+            # Q 테이블은 그대로 유지 → AQPACE 가 채운 추정치를 AQRERM 이 이어받아 사용.
+            # 실험 의도: AQPACE 의 초기 수렴 속도 + AQRERM 의 안정 운영을 결합 시
+            #   각 단계의 장점이 실제로 조합되는지 확인.
             switch_tick = self.params.get('switch_tick', 15000)
             if current_tick < switch_tick:
                 return self._route_aqpace(packet, current_tick, all_nodes)

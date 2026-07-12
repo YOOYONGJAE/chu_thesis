@@ -3,8 +3,8 @@
 
 순서:
   seq1 : aqrerm_pre / aqrerm_c / aqrerm_c_pre / aqpace   @ λ ∈ {2, 2.5, 3}
-  seq2 : pfe_echo_tick / pfe_c_echo_tick / pfe_pre_echo_tick / aqpace   @ λ ∈ {2, 2.5, 3}
-  seq3 : pfe_echo_tick / pfe_c_echo_tick / pfe_pre_echo_tick / aqpace   @ λ ∈ {3.5, 3.7, 3.8}
+  seq2 : aqpace_no_pre_no_queue / aqpace_no_pre / aqpace_no_queue / aqpace   @ λ ∈ {2, 2.5, 3}
+  seq3 : aqpace_no_pre_no_queue / aqpace_no_pre / aqpace_no_queue / aqpace   @ λ ∈ {3.5, 3.7, 3.8}
 
 각 실험마다 PNG + MD = 2 파일 → 총 6 파일 생성.
 파일명: result_compare_PFE_<seq명>.png / .md
@@ -36,29 +36,29 @@ TOTAL_TICKS = 40000
 # LABELS / COLORS (main_compare_PFE 와 동일 풀)
 # -------------------------------------------------------------------------
 LABELS = {
-    'pfe_echo_tick':            'PFE_echo_tick',
-    'pfe_pre_echo_tick':        'PFE_pre_echo_tick',
+    'aqpace_no_pre_no_queue':            'AQPACE(-pre,-queue)',
+    'aqpace_no_queue':        'AQPACE(-queue)',
     'aqrerm_c':                 'AQRERM_c',
     'aqrerm':                   'AQRERM',
     'aqrerm_no_L':              'AQRERM_no_L',
-    'pfe_c_echo_tick':          'PFE_c_echo_tick',
+    'aqpace_no_pre':          'AQPACE(-pre)',
     'aqpace':      'AQPACE',
     'aqrerm_c_pre':             'AQRERM_c_pre_RERM',
     'aqrerm_pre':               'AQRERM_pre',
-    'fe_c_pre_echo':            'FE_c_pre_echo',
-    'aqpace_no_L': 'AQPACE_noL',
+    'aqpace_no_point':            'AQPACE(-point)',
+    'aqpace_no_L': 'AQPACE(-L)',
 }
 COLORS = {
-    'pfe_echo_tick':            '#0072B2',
-    'pfe_pre_echo_tick':        '#DAA32D',
+    'aqpace_no_pre_no_queue':            '#0072B2',
+    'aqpace_no_queue':        '#DAA32D',
     'aqrerm_c':                 '#009E73',  # 청록 (main_compare_PFE 의 변경 전 표준값)
     'aqrerm':                   '#CC79A7',
     'aqrerm_no_L':              '#882255',
-    'pfe_c_echo_tick':          '#D55E00',
+    'aqpace_no_pre':          '#D55E00',
     'aqpace':      '#56B4E9',
     'aqrerm_c_pre':             '#F0E442',
     'aqrerm_pre':               '#117733',
-    'fe_c_pre_echo':            '#000000',
+    'aqpace_no_point':            '#000000',
     'aqpace_no_L': '#3700FF',
 }
 
@@ -73,12 +73,12 @@ EXPERIMENT_SEQUENCES = [
     },
     {
         'name': 'seq2_pfe_family_low',
-        'algorithms': ['pfe_echo_tick', 'pfe_c_echo_tick', 'pfe_pre_echo_tick', 'aqpace'],
+        'algorithms': ['aqpace_no_pre_no_queue', 'aqpace_no_pre', 'aqpace_no_queue', 'aqpace'],
         'lambdas': [2, 2.5, 3],
     },
     {
         'name': 'seq3_pfe_family_high',
-        'algorithms': ['pfe_echo_tick', 'pfe_c_echo_tick', 'pfe_pre_echo_tick', 'aqpace'],
+        'algorithms': ['aqpace_no_pre_no_queue', 'aqpace_no_pre', 'aqpace_no_queue', 'aqpace'],
         'lambdas': [3.5, 3.7, 3.8],
     },
 ]

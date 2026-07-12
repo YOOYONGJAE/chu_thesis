@@ -30,11 +30,11 @@ ALGORITHMS = [
     'aqrerm',
     # 'aqrerm_c',
     # 'aqrerm_c_pre',
-    # 'pfe_echo_tick',
-    # 'pfe_c_echo_tick',
-    # 'pfe_pre_echo_tick',
+    # 'aqpace_no_pre_no_queue',
+    # 'aqpace_no_pre',
+    # 'aqpace_no_queue',
     'aqpace',
-    # 'fe_c_pre_echo',
+    # 'aqpace_no_point',
     # 'aqpace_no_L',
     # 'aqrerm_no_L',
     # 'aqrerm_4000_no_L',
@@ -42,15 +42,15 @@ ALGORITHMS = [
 LABELS = {
     'q_routing':                'Q-routing',
     'aqfe':                     'AQFE',
-    'pfe_echo_tick':            'PFE_echo_tick',
-    'pfe_pre_echo_tick':        'PFE_pre_echo_tick',
+    'aqpace_no_pre_no_queue':            'AQPACE(-pre,-queue)',
+    'aqpace_no_queue':        'AQPACE(-queue)',
     'aqrerm_c':                  'AQRERM_c',
     'aqrerm':                   'AQRERM',
-    'pfe_c_echo_tick':          'PFE_c_echo_tick',
+    'aqpace_no_pre':          'AQPACE(-pre)',
     'aqpace':      'AQPACE',
     'aqrerm_c_pre':             'AQRERM_c_pre_RERM',
-    'fe_c_pre_echo':            'FE_c_pre_echo',
-    'aqpace_no_L': 'AQPACE_noL',
+    'aqpace_no_point':            'AQPACE(-point)',
+    'aqpace_no_L': 'AQPACE(-L)',
     'aqrerm_no_L':              'AQRERM_no_L',
     'aqrerm_4000_no_L':         'AQRERM_4000_no_L',
 }
@@ -58,14 +58,14 @@ LABELS = {
 COLORS = {
     'q_routing':                '#117733',  # 진녹 (baseline 최단순)
     'aqfe':                     '#44AA99',  # teal (AQRERM 의 부모)
-    'pfe_echo_tick':            '#0072B2',  # 파랑
-    'pfe_pre_echo_tick':        '#E69F00',  # 주황
+    'aqpace_no_pre_no_queue':            '#0072B2',  # 파랑
+    'aqpace_no_queue':        '#E69F00',  # 주황
     'aqrerm_c':                  '#009E73',  # 청록
     'aqrerm':                   '#CC79A7',  # 분홍보라
-    'pfe_c_echo_tick':          '#D55E00',  # 주홍 (vermillion)
+    'aqpace_no_pre':          '#D55E00',  # 주홍 (vermillion)
     'aqpace':      '#56B4E9',  # 하늘색
     'aqrerm_c_pre':             '#F0E442',  # 노랑
-    'fe_c_pre_echo':            '#000000',  # 검정 (always-FE 강조)
+    'aqpace_no_point':            '#000000',  # 검정 (always-FE 강조)
     'aqpace_no_L': '#999999',  # 회색 (L=0, no Route Memory)
     'aqrerm_no_L':              '#882255',  # 진한 자주 (AQRERM family, 항상 no L)
     'aqrerm_4000_no_L':         "#0400FF",  # 진한 파랑 (AQRERM family, 4000 이후 no L)

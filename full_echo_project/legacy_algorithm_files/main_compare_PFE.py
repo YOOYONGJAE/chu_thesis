@@ -35,14 +35,14 @@ TOPOLOGY_GRID = {'num_nodes': GRID_NUM_NODES, 'adjacency': GRID_ADJACENCY}
 # - aqrerm_c_pre            : AQRERM_c pre-echo. 랜덤 echo 먼저 → fresh t + c·queue 로 선택
 #
 # === PFE family (포인트 게이트 풀에코) ===
-# - pfe_echo_tick            : select-first (stale Q) + PFE 포인트 게이트, c 없음
-# - pfe_c_echo_tick          : select-first (stale Q + c·queue) + PFE 포인트 게이트
-# - pfe_pre_echo_tick        : echo-first (fresh t) + PFE 포인트 게이트, c 없음
+# - aqpace_no_pre_no_queue            : select-first (stale Q) + PFE 포인트 게이트, c 없음
+# - aqpace_no_pre          : select-first (stale Q + c·queue) + PFE 포인트 게이트
+# - aqpace_no_queue        : echo-first (fresh t) + PFE 포인트 게이트, c 없음
 # - aqpace      : echo-first (fresh t + c·queue) + PFE 포인트 게이트 (★ 전부 적용)
 # - aqpace_no_L : aqpace 와 동일하되 L=0
 #
 # === Full Echo family (게이트 없음) ===
-# - fe_c_pre_echo            : 매 라우팅 무조건 full echo, fresh t + c·queue 로 선택 (echo 비용 상한선 기준)
+# - aqpace_no_point            : 매 라우팅 무조건 full echo, fresh t + c·queue 로 선택 (echo 비용 상한선 기준)
 ALGORITHMS = [
     # 'q_routing',
     # 'aqfe',
@@ -51,42 +51,42 @@ ALGORITHMS = [
     'aqrerm_pre',
     'aqrerm_c',
     'aqrerm_c_pre',
-    # 'pfe_echo_tick',
-    # 'pfe_c_echo_tick',
-    # 'pfe_pre_echo_tick',
+    # 'aqpace_no_pre_no_queue',
+    # 'aqpace_no_pre',
+    # 'aqpace_no_queue',
     'aqpace', # ★ 메인 포커스: 큐 항 (c · queue) 추가한 PFE 변형
-    # 'fe_c_pre_echo',
+    # 'aqpace_no_point',
     # 'aqpace_no_L',
 ]
 LABELS = {
     'q_routing': 'Q-routing', 
     'aqfe': 'AQFE',
-    'pfe_echo_tick':            'PFE_echo_tick',
-    'pfe_pre_echo_tick':        'PFE_pre_echo_tick',
+    'aqpace_no_pre_no_queue':            'AQPACE(-pre,-queue)',
+    'aqpace_no_queue':        'AQPACE(-queue)',
     'aqrerm_c':                  'AQRERM_c',
     'aqrerm':                   'AQRERM',
     'aqrerm_no_L':              'AQRERM_no_L',
     'aqpace':      'AQPACE',
     'aqrerm_c_pre':             'AQRERM_c_pre_RERM',
     'aqrerm_pre':              'AQRERM_pre',
-    'fe_c_pre_echo':            'FE_c_pre_echo',
-    'pfe_c_echo_tick':          'PFE_c_echo_tick',
-    'aqpace_no_L': 'AQPACE_noL',
+    'aqpace_no_point':            'AQPACE(-point)',
+    'aqpace_no_pre':          'AQPACE(-pre)',
+    'aqpace_no_L': 'AQPACE(-L)',
 }
 # 적녹색약 친화 (Wong palette)
 COLORS = {
     'q_routing':                "#00FF73", 
     'aqfe':                     "#FFBCBC",
-    'pfe_echo_tick':            '#0072B2',  # 파랑
-    'pfe_pre_echo_tick':        "#DAA32D",  # 주황
+    'aqpace_no_pre_no_queue':            '#0072B2',  # 파랑
+    'aqpace_no_queue':        "#DAA32D",  # 주황
     'aqrerm_c':                  "#0011FF",  # 검정
     'aqrerm':                   '#CC79A7',  # 분홍보라
     'aqrerm_no_L':              '#882255',  # 진한 자주 (AQRERM family, 항상 no L)
-    'pfe_c_echo_tick':          '#D55E00',  # 주홍 (vermillion)
+    'aqpace_no_pre':          '#D55E00',  # 주홍 (vermillion)
     'aqpace':      '#56B4E9',  # 하늘색
     'aqrerm_c_pre':             "#E4D611",  # 노랑
     'aqrerm_pre':              '#117733',  # 진녹 (AQRERM pre-echo, c 없음)
-    'fe_c_pre_echo':            '#000000',  # 검정 (always-FE 강조)
+    'aqpace_no_point':            '#000000',  # 검정 (always-FE 강조)
     'aqpace_no_L': "#3700FF",  # 회색 (L=0, no Route Memory)
 }
 
