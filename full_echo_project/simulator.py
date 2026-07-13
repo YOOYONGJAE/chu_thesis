@@ -128,24 +128,26 @@ class Simulator:
                 # 라우팅 결정 (다음 홉 반환)
                 next_hop = node.route(pkt, tick, self.nodes)
 
+                # 링크 사용량 기록 — 목적지 도착(마지막 홉) 포함 모든 링크 통과 카운트
+                link = (i, next_hop) if (i, next_hop) in self.link_usage else (next_hop, i)
+                self.link_usage[link] += 1
+                # =====================================================================
+                # [절단 전/후 분리 카운트 — 이번 연구 마감 범위 제외]
+                # 링크 사용량을 절단 시점 기준으로 pre/post 로 나눠 기록합니다.
+                # 재활성화 시 아래 주석과 link_usage_pre/post_cut 초기화 블록을
+                # 함께 해제하십시오.
+                # =====================================================================
+                # if cut_tick is None or tick < cut_tick:
+                #     link_usage_pre_cut[link] += 1
+                # else:
+                #     link_usage_post_cut[link] += 1
+
                 # 목적지 도착 시 전달 시간 기록, 아니면 다음 홉으로 이동
                 if next_hop == pkt.dst:
                     delivery_time = tick + 1 - pkt.created_at
                     window_delivered.append(delivery_time)
                     total_delivered += 1
                 else:
-                    link = (i, next_hop) if (i, next_hop) in self.link_usage else (next_hop, i)
-                    self.link_usage[link] += 1
-                    # =====================================================================
-                    # [절단 전/후 분리 카운트 — 이번 연구 마감 범위 제외]
-                    # 링크 사용량을 절단 시점 기준으로 pre/post 로 나눠 기록합니다.
-                    # 재활성화 시 아래 주석과 link_usage_pre/post_cut 초기화 블록을
-                    # 함께 해제하십시오.
-                    # =====================================================================
-                    # if cut_tick is None or tick < cut_tick:
-                    #     link_usage_pre_cut[link] += 1
-                    # else:
-                    #     link_usage_post_cut[link] += 1
                     self.nodes[next_hop].incoming.append(pkt)
 
             # 2.5 AQPACE per-tick 포인트 적립 — 모든 노드 매 tick

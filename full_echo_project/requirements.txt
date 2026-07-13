@@ -1,0 +1,6 @@
+numpy
+matplotlib
+scikit-optimize
+
+# Only needed for old code in legacy_algorithm_files/ and dispose/
+# torch
