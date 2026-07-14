@@ -125,9 +125,16 @@ def run_all():
                 q25 = np.percentile(adt_arr, 25, axis=0)
                 q75 = np.percentile(adt_arr, 75, axis=0)
 
-                # ---- median 굵은 실선 + IQR 음영 ----
-                ax.plot(x_axis, median, label=label, color=color, linewidth=2.0)
-                ax.fill_between(x_axis, q25, q75, color=color, alpha=0.2)
+                # ---- median 실선 + IQR 오차 막대 (일정 간격 세로선) ----
+                # yerr 는 (아래 길이, 위 길이) 두 행 — median 기준 비대칭 IQR 범위
+                # offset : 알고리즘마다 시작점을 어긋내 막대가 같은 x 에 겹치지 않게 함
+                yerr = np.vstack([median - q25, q75 - median])
+                spacing = max(1, len(x_axis) // 10)
+                offset = ALGORITHMS.index(algo) * spacing // len(ALGORITHMS)
+                ax.errorbar(x_axis, median, yerr=yerr,
+                            errorevery=(offset, spacing),
+                            capsize=3, elinewidth=1.2, capthick=1.2,
+                            label=label, color=color, linewidth=2.0)
 
                 # ---- steady-state 요약 (마지막 절반 평균 → 시드별로 → median/IQR) ----
                 half = adt_arr.shape[1] // 2
