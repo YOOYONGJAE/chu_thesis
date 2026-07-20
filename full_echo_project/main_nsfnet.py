@@ -120,10 +120,12 @@ def run_all():
                     adt_runs.append(adt)
 
                 # ---- 시드별 시리즈를 (n_seeds, n_windows) 배열로 쌓고 백분위수 계산 ----
+                # 전달 패킷이 0인 통계 구간은 simulator 가 NaN 을 넣으므로,
+                # 그 시드 자리만 제외하고 나머지 시드로 집계하는 nan 무시 함수를 사용
                 adt_arr = np.array(adt_runs)
-                median = np.median(adt_arr, axis=0)
-                q25 = np.percentile(adt_arr, 25, axis=0)
-                q75 = np.percentile(adt_arr, 75, axis=0)
+                median = np.nanmedian(adt_arr, axis=0)
+                q25 = np.nanpercentile(adt_arr, 25, axis=0)
+                q75 = np.nanpercentile(adt_arr, 75, axis=0)
 
                 # ---- median 실선 + IQR 오차 막대 (일정 간격 세로선) ----
                 # yerr 는 (아래 길이, 위 길이) 두 행 — median 기준 비대칭 IQR 범위
@@ -137,13 +139,14 @@ def run_all():
                             label=label, color=color, linewidth=2.0)
 
                 # ---- steady-state 요약 (마지막 절반 평균 → 시드별로 → median/IQR) ----
+                # 여기도 NaN 구간을 제외하고 집계 (nan 무시 계열)
                 half = adt_arr.shape[1] // 2
-                ss_per_seed = np.mean(adt_arr[:, half:], axis=1)
-                ss_median = float(np.median(ss_per_seed))
-                ss_q25 = float(np.percentile(ss_per_seed, 25))
-                ss_q75 = float(np.percentile(ss_per_seed, 75))
-                ss_min  = float(np.min(ss_per_seed))
-                ss_max  = float(np.max(ss_per_seed))
+                ss_per_seed = np.nanmean(adt_arr[:, half:], axis=1)
+                ss_median = float(np.nanmedian(ss_per_seed))
+                ss_q25 = float(np.nanpercentile(ss_per_seed, 25))
+                ss_q75 = float(np.nanpercentile(ss_per_seed, 75))
+                ss_min  = float(np.nanmin(ss_per_seed))
+                ss_max  = float(np.nanmax(ss_per_seed))
                 print(f"    [SS ADT] median={ss_median:6.2f}  "
                       f"IQR=[{ss_q25:6.2f}, {ss_q75:6.2f}]  "
                       f"range=[{ss_min:6.2f}, {ss_max:6.2f}]")

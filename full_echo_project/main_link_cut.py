@@ -148,10 +148,12 @@ def run_all():
                         adt_runs.append(adt)
 
                     # ---- 시드별 시리즈를 (n_seeds, n_windows) 배열로 쌓고 백분위수 계산 ----
+                    # 전달 패킷이 0인 통계 구간은 simulator 가 NaN 을 넣으므로,
+                    # 그 시드 자리만 제외하고 나머지 시드로 집계하는 nan 무시 함수를 사용
                     adt_arr = np.array(adt_runs)
-                    median = np.median(adt_arr, axis=0)
-                    q25 = np.percentile(adt_arr, 25, axis=0)
-                    q75 = np.percentile(adt_arr, 75, axis=0)
+                    median = np.nanmedian(adt_arr, axis=0)
+                    q25 = np.nanpercentile(adt_arr, 25, axis=0)
+                    q75 = np.nanpercentile(adt_arr, 75, axis=0)
 
                     # ---- median 굵은 실선 + IQR 음영 ----
                     ax.plot(x_axis, median, label=label, color=color, linewidth=2.0)
@@ -161,20 +163,20 @@ def run_all():
                     cut_window = CUT_TICK // STAT_INTERVAL
                     pre  = adt_arr[:, :cut_window]
                     post = adt_arr[:, cut_window:]
-                    ss_pre  = np.mean(pre, axis=1)  if pre.shape[1]  > 0 else np.array([0.0])
-                    ss_post = np.mean(post, axis=1) if post.shape[1] > 0 else np.array([0.0])
-                    print(f"    [SS pre ] median={float(np.median(ss_pre)):6.2f}  "
-                          f"IQR=[{float(np.percentile(ss_pre, 25)):6.2f}, "
-                          f"{float(np.percentile(ss_pre, 75)):6.2f}]")
-                    print(f"    [SS post] median={float(np.median(ss_post)):6.2f}  "
-                          f"IQR=[{float(np.percentile(ss_post, 25)):6.2f}, "
-                          f"{float(np.percentile(ss_post, 75)):6.2f}]")
-                    md.write(f"\n**Pre-cut ADT** median={float(np.median(ss_pre)):.2f}  "
-                             f"IQR=[{float(np.percentile(ss_pre, 25)):.2f}, "
-                             f"{float(np.percentile(ss_pre, 75)):.2f}]  \n")
-                    md.write(f"**Post-cut ADT** median={float(np.median(ss_post)):.2f}  "
-                             f"IQR=[{float(np.percentile(ss_post, 25)):.2f}, "
-                             f"{float(np.percentile(ss_post, 75)):.2f}]\n\n")
+                    ss_pre  = np.nanmean(pre, axis=1)  if pre.shape[1]  > 0 else np.array([0.0])
+                    ss_post = np.nanmean(post, axis=1) if post.shape[1] > 0 else np.array([0.0])
+                    print(f"    [SS pre ] median={float(np.nanmedian(ss_pre)):6.2f}  "
+                          f"IQR=[{float(np.nanpercentile(ss_pre, 25)):6.2f}, "
+                          f"{float(np.nanpercentile(ss_pre, 75)):6.2f}]")
+                    print(f"    [SS post] median={float(np.nanmedian(ss_post)):6.2f}  "
+                          f"IQR=[{float(np.nanpercentile(ss_post, 25)):6.2f}, "
+                          f"{float(np.nanpercentile(ss_post, 75)):6.2f}]")
+                    md.write(f"\n**Pre-cut ADT** median={float(np.nanmedian(ss_pre)):.2f}  "
+                             f"IQR=[{float(np.nanpercentile(ss_pre, 25)):.2f}, "
+                             f"{float(np.nanpercentile(ss_pre, 75)):.2f}]  \n")
+                    md.write(f"**Post-cut ADT** median={float(np.nanmedian(ss_post)):.2f}  "
+                             f"IQR=[{float(np.nanpercentile(ss_post, 25)):.2f}, "
+                             f"{float(np.nanpercentile(ss_post, 75)):.2f}]\n\n")
 
                 # ---- 절단 시점 수직선 + 라벨 ----
                 ax.axvline(x=CUT_TICK, color='red', linestyle='--', linewidth=1.5, label='Link cut')

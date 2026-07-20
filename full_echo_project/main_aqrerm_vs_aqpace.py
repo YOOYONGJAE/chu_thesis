@@ -91,30 +91,32 @@ def compute_convergence_time(median_series, threshold, x_axis, min_fraction=0.95
 
 def compute_auc(adt_arr):
     """시드별 ADT 시계열의 합 → 시드 간 median 반환."""
-    per_seed_auc = np.sum(adt_arr, axis=1)
-    return float(np.median(per_seed_auc)), per_seed_auc
+    # 전달 0 구간(NaN)은 제외하고 합/집계 (nan 무시 계열)
+    per_seed_auc = np.nansum(adt_arr, axis=1)
+    return float(np.nanmedian(per_seed_auc)), per_seed_auc
 
 
 def compute_worst_spike(adt_arr):
     """시드별 max ADT → 시드 간 median 반환."""
-    per_seed_max = np.max(adt_arr, axis=1)
-    return float(np.median(per_seed_max)), per_seed_max
+    per_seed_max = np.nanmax(adt_arr, axis=1)
+    return float(np.nanmedian(per_seed_max)), per_seed_max
 
 
 def compute_ss_metrics(adt_arr):
     """SS ADT (뒷쪽 절반 평균) per seed → median / mean / std / CV / IQR / range."""
+    # NaN 구간을 제외하고 집계 (nan 무시 계열)
     half = adt_arr.shape[1] // 2
-    ss_per_seed = np.mean(adt_arr[:, half:], axis=1)
+    ss_per_seed = np.nanmean(adt_arr[:, half:], axis=1)
     return {
         'per_seed': ss_per_seed,
-        'median': float(np.median(ss_per_seed)),
-        'mean':   float(np.mean(ss_per_seed)),
-        'std':    float(np.std(ss_per_seed)),
-        'cv':     float(np.std(ss_per_seed) / np.mean(ss_per_seed)) if np.mean(ss_per_seed) > 0 else 0.0,
-        'q25':    float(np.percentile(ss_per_seed, 25)),
-        'q75':    float(np.percentile(ss_per_seed, 75)),
-        'min':    float(np.min(ss_per_seed)),
-        'max':    float(np.max(ss_per_seed)),
+        'median': float(np.nanmedian(ss_per_seed)),
+        'mean':   float(np.nanmean(ss_per_seed)),
+        'std':    float(np.nanstd(ss_per_seed)),
+        'cv':     float(np.nanstd(ss_per_seed) / np.nanmean(ss_per_seed)) if np.nanmean(ss_per_seed) > 0 else 0.0,
+        'q25':    float(np.nanpercentile(ss_per_seed, 25)),
+        'q75':    float(np.nanpercentile(ss_per_seed, 75)),
+        'min':    float(np.nanmin(ss_per_seed)),
+        'max':    float(np.nanmax(ss_per_seed)),
     }
 
 
@@ -151,9 +153,9 @@ def run_lambda(ax, lam, total_ticks, md):
         adt_arr = np.array(adt_runs)
         results[algo] = {
             'adt_arr':  adt_arr,
-            'median':   np.median(adt_arr, axis=0),
-            'q25':      np.percentile(adt_arr, 25, axis=0),
-            'q75':      np.percentile(adt_arr, 75, axis=0),
+            'median':   np.nanmedian(adt_arr, axis=0),
+            'q25':      np.nanpercentile(adt_arr, 25, axis=0),
+            'q75':      np.nanpercentile(adt_arr, 75, axis=0),
         }
 
     # ---- threshold = AQPACE 의 SS median × 1.2 ----
