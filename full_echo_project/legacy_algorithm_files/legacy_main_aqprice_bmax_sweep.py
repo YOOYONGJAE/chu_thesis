@@ -1,8 +1,8 @@
 # =============================================================================
 # [요약] 구세대 변형 pfe_c_ade — 포인트 예산 상한 pfe_b_max sweep (구버전)
 # - 6x6 grid, 단일 시드 800, 옛 파라미터 (C=0.5), BMAX [1.0~2.0], AQRERM baseline 점선
-# - AQPACE 확정 이전의 초기 탐색 자료. 현행 실험 체계와 파라미터 기준이 다름
-# - ※ main_compare_AQPACE_maxTest_6by6.py (신버전 b_max sweep) 와 기능 중복
+# - AQPRICE 확정 이전의 초기 탐색 자료. 현행 실험 체계와 파라미터 기준이 다름
+# - ※ main_compare_AQPRICE_maxTest_6by6.py (신버전 b_max sweep) 와 기능 중복
 # =============================================================================
 import random
 import numpy as np

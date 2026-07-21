@@ -1,5 +1,5 @@
 # =============================================================================
-# [요약] NSFNET 토폴로지 일반화 검증 — AQRERM vs AQPACE, 10 시드 sweep
+# [요약] NSFNET 토폴로지 일반화 검증 — AQRERM vs AQPRICE, 10 시드 sweep
 # - 6x6 grid 가 아닌 실제 백본망 (NSFNET) 에서 λ 별 ADT median + IQR 비교
 # - "grid 특화 아님" 을 보이는 일반화 증거 생산 (main_compare_PFE 의 NSFNET 판)
 # =============================================================================
@@ -17,7 +17,7 @@ from topology_nsfnet import NUM_NODES as NSFNET_NUM_NODES, ADJACENCY as NSFNET_A
 ETA = 0.9
 K   = 0.5
 L   = 3
-C   = 0.22   # aqpace 의 큐 페널티 가중치 (다른 알고리즘은 이 키를 안 읽음)
+C   = 0.22   # aqprice 의 큐 페널티 가중치 (다른 알고리즘은 이 키를 안 읽음)
 BASE_PARAMS = {'eta': ETA, 'k': K, 'L': L, 'c': C}
 
 TOPOLOGY_NSFNET = {'num_nodes': NSFNET_NUM_NODES, 'adjacency': NSFNET_ADJACENCY}
@@ -27,35 +27,35 @@ ALGORITHMS = [
     'aqrerm',
     # 'aqrerm_c',
     # 'aqrerm_c_pre',
-    # 'aqpace_no_pre_no_queue',
-    # 'aqpace_no_pre',
-    # 'aqpace_no_queue',
-    'aqpace', # ★ 메인 포커스: 큐 항 (c · queue) 추가한 PFE 변형
-    # 'aqpace_no_point',
-    # 'aqpace_no_L',
+    # 'aqprice_no_pre_no_queue',
+    # 'aqprice_no_pre',
+    # 'aqprice_no_queue',
+    'aqprice', # ★ 메인 포커스: 큐 항 (c · queue) 추가한 PFE 변형
+    # 'aqprice_no_point',
+    # 'aqprice_no_L',
 ]
 LABELS = {
-    'aqpace_no_pre_no_queue':            'AQPACE(-pre,-queue)',
-    'aqpace_no_queue':        'AQPACE(-queue)',
+    'aqprice_no_pre_no_queue':            'AQPRICE(-pre,-queue)',
+    'aqprice_no_queue':        'AQPRICE(-queue)',
     'aqrerm_c':                  'AQRERM_c',
     'aqrerm':                   'AQRERM',
-    'aqpace_no_pre':          'AQPACE(-pre)',
-    'aqpace':      'AQPACE',
+    'aqprice_no_pre':          'AQPRICE(-pre)',
+    'aqprice':      'AQPRICE',
     'aqrerm_c_pre':             'AQRERM_c_pre_RERM',
-    'aqpace_no_point':            'AQPACE(-point)',
-    'aqpace_no_L': 'AQPACE(-L)',
+    'aqprice_no_point':            'AQPRICE(-point)',
+    'aqprice_no_L': 'AQPRICE(-L)',
 }
 # 적녹색약 친화 (Wong palette)
 COLORS = {
-    'aqpace_no_pre_no_queue':            '#0072B2',  # 파랑
-    'aqpace_no_queue':        '#E69F00',  # 주황
+    'aqprice_no_pre_no_queue':            '#0072B2',  # 파랑
+    'aqprice_no_queue':        '#E69F00',  # 주황
     'aqrerm_c':                  '#009E73',  # 청록
     'aqrerm':                   '#CC79A7',  # 분홍보라
-    'aqpace_no_pre':          '#D55E00',  # 주홍 (vermillion)
-    'aqpace':      '#56B4E9',  # 하늘색
+    'aqprice_no_pre':          '#D55E00',  # 주홍 (vermillion)
+    'aqprice':      '#56B4E9',  # 하늘색
     'aqrerm_c_pre':             '#F0E442',  # 노랑
-    'aqpace_no_point':            '#000000',  # 검정 (always-FE 강조)
-    'aqpace_no_L': "#0400FF",  # 회색 (L=0, no Route Memory)
+    'aqprice_no_point':            '#000000',  # 검정 (always-FE 강조)
+    'aqprice_no_L': "#0400FF",  # 회색 (L=0, no Route Memory)
 }
 
 # 10 개 시드 × 알고리즘 × 부하별 반복

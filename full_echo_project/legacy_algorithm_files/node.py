@@ -81,13 +81,13 @@ class Node:
         # 큐가 비어 라우팅 안 하는 tick 에도 gr 만큼 적립이 진행됨.
         # 라우팅 함수 본문에서는 적립을 빼서 중복 적립 방지.
         self.tick_accum_enabled = algorithm in (
-            'aqpace',
-            'aqpace_l0',
-            'aqpace_then_aqrerm',
-            'aqpace_no_queue',
-            'aqpace_no_pre_no_queue',
-            'aqpace_no_pre',
-            'aqpace_no_L',
+            'aqprice',
+            'aqprice_l0',
+            'aqprice_then_aqrerm',
+            'aqprice_no_queue',
+            'aqprice_no_pre_no_queue',
+            'aqprice_no_pre',
+            'aqprice_no_L',
         )
 
         # ΔQ_min: 목적지별 직전 Q_min 저장
@@ -266,42 +266,42 @@ class Node:
             return self._route_pfe_c_ade(packet, current_tick, all_nodes)
         
             # ★ PFE_c_pre_echo: PFE_c_AdE 의 변형 — echo 와 노드 선정의 순서를 뒤집음
-        elif self.algorithm == 'aqpace_route_accum':
-            # [AQPACE ablation] tick 기반 포인트 적립 → 라우팅 호출 시에만 적립으로 변경.
-            # 포인트 게이트 / 선에코 / c·큐 페널티 / Route Memory 는 AQPACE 와 동일.
+        elif self.algorithm == 'aqprice_route_accum':
+            # [AQPRICE ablation] tick 기반 포인트 적립 → 라우팅 호출 시에만 적립으로 변경.
+            # 포인트 게이트 / 선에코 / c·큐 페널티 / Route Memory 는 AQPRICE 와 동일.
             # 패킷이 없어 라우팅 안 한 tick 에는 포인트가 쌓이지 않는 전신 버전.
-            # 실험 의도: tick 단위 균등 적립(AQPACE)이 라우팅 빈도 기반 적립보다 유리한지 확인.
+            # 실험 의도: tick 단위 균등 적립(AQPRICE)이 라우팅 빈도 기반 적립보다 유리한지 확인.
             return self._route_pfe_c_pre_echo(packet, current_tick, all_nodes)
 
-        elif self.algorithm == 'aqpace_route_accum_no_L':
-            # [AQPACE ablation] aqpace_route_accum + link_cut 시점(보통 7000 tick) 이후 L=0 강제.
+        elif self.algorithm == 'aqprice_route_accum_no_L':
+            # [AQPRICE ablation] aqprice_route_accum + link_cut 시점(보통 7000 tick) 이후 L=0 강제.
             # 실험 의도: 링크 절단 시나리오에서 Route Memory 없이 라우팅 호출 기반 적립의 적응 속도 확인.
             return self._route_pfe_c_pre_echo_l0(packet, current_tick, all_nodes)
 
-        elif self.algorithm == 'aqpace':
-            # [AQPACE 풀버전] 포인트 게이트 + 선에코(echo→선정→학습) + c·큐 페널티 + Route Memory(L).
+        elif self.algorithm == 'aqprice':
+            # [AQPRICE 풀버전] 포인트 게이트 + 선에코(echo→선정→학습) + c·큐 페널티 + Route Memory(L).
             # tick_accumulate_point() 로 simulator 가 매 tick 모든 노드에 포인트 균등 적립.
-            return self._route_aqpace(packet, current_tick, all_nodes)
+            return self._route_aqprice(packet, current_tick, all_nodes)
 
-        elif self.algorithm == 'aqpace_no_queue':
-            # [AQPACE ablation] c·큐 페널티 항(c·queue_n) 제거.
+        elif self.algorithm == 'aqprice_no_queue':
+            # [AQPRICE ablation] c·큐 페널티 항(c·queue_n) 제거.
             # y_star 선정 시 Score = t_n 만 사용 (큐 혼잡 정보 미반영).
-            # 포인트 게이트 / 선에코 / Route Memory / tick 적립은 AQPACE 와 동일.
+            # 포인트 게이트 / 선에코 / Route Memory / tick 적립은 AQPRICE 와 동일.
             # 실험 의도: 이웃 큐 길이 정보가 수렴 속도 및 SS ADT 개선에 얼마나 기여하는지 확인.
             return self._route_pfe_pre_echo_tick(packet, current_tick, all_nodes)
 
-        elif self.algorithm == 'aqpace_no_pre_no_queue':
-            # [AQPACE ablation] 선에코 순서 변경(select-first) + c·큐 페널티 제거.
-            # stale Q 로 먼저 y_star 선정 → 포인트 충분 시 echo 실행 (AQPACE 의 반대 순서).
-            # 큐 페널티도 없으므로 AQPACE 대비 두 요소 동시 제거.
+        elif self.algorithm == 'aqprice_no_pre_no_queue':
+            # [AQPRICE ablation] 선에코 순서 변경(select-first) + c·큐 페널티 제거.
+            # stale Q 로 먼저 y_star 선정 → 포인트 충분 시 echo 실행 (AQPRICE 의 반대 순서).
+            # 큐 페널티도 없으므로 AQPRICE 대비 두 요소 동시 제거.
             # 실험 의도: 선에코 순서와 큐 페널티를 모두 제거했을 때의 성능 하한 측정.
             return self._route_pfe_echo_tick(packet, current_tick, all_nodes)
 
-        elif self.algorithm == 'aqpace_no_pre':
-            # [AQPACE ablation] 선에코 순서만 변경(select-first), c·큐 페널티는 유지.
+        elif self.algorithm == 'aqprice_no_pre':
+            # [AQPRICE ablation] 선에코 순서만 변경(select-first), c·큐 페널티는 유지.
             # stale Q + c·last_known_queue 로 먼저 y_star 선정 → 포인트 충분 시 echo.
-            # AQPACE 는 echo → fresh Score → 선정 순이지만 이 변형은 선정 → echo 순.
-            # 실험 의도: 에코를 먼저 해 fresh 정보로 선정하는 것(AQPACE)의 우위 여부 확인.
+            # AQPRICE 는 echo → fresh Score → 선정 순이지만 이 변형은 선정 → echo 순.
+            # 실험 의도: 에코를 먼저 해 fresh 정보로 선정하는 것(AQPRICE)의 우위 여부 확인.
             return self._route_pfe_c_echo_tick(packet, current_tick, all_nodes)
         elif self.algorithm == 'aqrerm_c_pre':
             # AQRERM_c 의 pre-echo 변형 — 랜덤 echo (이전 y* 무조건 포함) 먼저 →
@@ -311,40 +311,40 @@ class Node:
             # AQRERM 의 pre-echo 변형 (c 없음) — 랜덤 echo (이전 y* 보장) →
             # fresh t 만으로 y* 선택 → 차등 update.
             return self._route_aqrerm_pre(packet, current_tick, all_nodes)
-        elif self.algorithm == 'aqpace_no_point':
-            # [AQPACE ablation] 포인트 게이트 시스템 완전 제거.
+        elif self.algorithm == 'aqprice_no_point':
+            # [AQPRICE ablation] 포인트 게이트 시스템 완전 제거.
             # 매 라우팅마다 무조건 Full Echo 실행 (포인트 잔액 무관).
-            # 선에코 순서 / c·큐 페널티 / Route Memory 는 AQPACE 와 동일.
+            # 선에코 순서 / c·큐 페널티 / Route Memory 는 AQPRICE 와 동일.
             # 실험 의도: 포인트 게이트(에코 빈도 제어)가 없을 때 echo 비용 대비 성능 확인.
-            #   echo 비용이 0인 현재 모델에서는 AQPACE 와 성능이 같거나 더 나아야 함 —
+            #   echo 비용이 0인 현재 모델에서는 AQPRICE 와 성능이 같거나 더 나아야 함 —
             #   차이가 있다면 포인트 게이트의 간접 효과(학습 속도 조절)를 의심할 수 있음.
             return self._route_fe_c_pre_echo(packet, current_tick, all_nodes)
 
-        elif self.algorithm == 'aqpace_no_L':
-            # [AQPACE ablation] Route Memory 완전 비활성 (L=0 항상 강제).
-            # 포인트 게이트 / 선에코 / c·큐 페널티 / tick 적립은 AQPACE 와 동일.
+        elif self.algorithm == 'aqprice_no_L':
+            # [AQPRICE ablation] Route Memory 완전 비활성 (L=0 항상 강제).
+            # 포인트 게이트 / 선에코 / c·큐 페널티 / tick 적립은 AQPRICE 와 동일.
             # 실험 의도: Route Memory(최근 L 홉 방문 노드 제외)가 루프 억제 및
             #   수렴 속도에 기여하는 정도 확인.
             original_L = self.params['L']
             self.params['L'] = 0
             try:
-                return self._route_aqpace(packet, current_tick, all_nodes)
+                return self._route_aqprice(packet, current_tick, all_nodes)
             finally:
                 self.params['L'] = original_L
 
-        elif self.algorithm == 'aqpace_l0':
-            # [링크 절단 시나리오용] AQPACE + link_cut 시점(보통 7000 tick) 이후 L=0 강제.
+        elif self.algorithm == 'aqprice_l0':
+            # [링크 절단 시나리오용] AQPRICE + link_cut 시점(보통 7000 tick) 이후 L=0 강제.
             # 실험 의도: 링크 절단 후 Route Memory 가 대체 경로 재학습을 방해하는지 확인.
-            return self._route_aqpace_l0(packet, current_tick, all_nodes)
+            return self._route_aqprice_l0(packet, current_tick, all_nodes)
 
-        elif self.algorithm == 'aqpace_then_aqrerm':
-            # [하이브리드] switch_tick 이전엔 AQPACE 로 초기 학습, 이후엔 AQRERM 으로 전환.
-            # Q 테이블은 그대로 유지 → AQPACE 가 채운 추정치를 AQRERM 이 이어받아 사용.
-            # 실험 의도: AQPACE 의 초기 수렴 속도 + AQRERM 의 안정 운영을 결합 시
+        elif self.algorithm == 'aqprice_then_aqrerm':
+            # [하이브리드] switch_tick 이전엔 AQPRICE 로 초기 학습, 이후엔 AQRERM 으로 전환.
+            # Q 테이블은 그대로 유지 → AQPRICE 가 채운 추정치를 AQRERM 이 이어받아 사용.
+            # 실험 의도: AQPRICE 의 초기 수렴 속도 + AQRERM 의 안정 운영을 결합 시
             #   각 단계의 장점이 실제로 조합되는지 확인.
             switch_tick = self.params.get('switch_tick', 15000)
             if current_tick < switch_tick:
-                return self._route_aqpace(packet, current_tick, all_nodes)
+                return self._route_aqprice(packet, current_tick, all_nodes)
             else:
                 return self._route_aqrerm(packet, current_tick, all_nodes)
         elif self.algorithm == 'pfe_c_ade_l0':
@@ -924,12 +924,12 @@ class Node:
         return y_star
 
     # -------------------------------------------------------------------------
-    # AQPACE — _route_pfe_c_pre_echo 변형.
+    # AQPRICE — _route_pfe_c_pre_echo 변형.
     # 차이점: 라우팅 함수 본문에서 total_point += gr 줄을 제거.
     # 대신 simulator tick 루프가 tick_accumulate_point() 로 매 tick 모든 노드에
     # gr 만큼 적립. 큐가 비어 라우팅 안 하는 tick 에도 적립 진행됨.
     # -------------------------------------------------------------------------
-    def _route_aqpace(self, packet, current_tick, all_nodes):
+    def _route_aqprice(self, packet, current_tick, all_nodes):
         self.pfe_window_route_count += 1
 
         dst   = packet.dst
@@ -1029,7 +1029,7 @@ class Node:
             return self._route_pfe_c_pre_echo(packet, current_tick, all_nodes)
 
     # -------------------------------------------------------------------------
-    # PFE_pre_echo_Tick — _route_aqpace 변형.
+    # PFE_pre_echo_Tick — _route_aqprice 변형.
     # 차이점: 선택과 Q-routing 폴백 모두에서 큐 길이 항 (c · queue) 을 완전히 제거.
     # 결과적으로 PFE 의 즉시 큐 반응성을 버리고 t / Q 만으로 결정 → 후반 진동 완화.
     # 적립은 simulator 의 tick_accumulate_point() 가 매 tick 담당 (동일).
@@ -1273,7 +1273,7 @@ class Node:
         return y_star
 
     # -------------------------------------------------------------------------
-    # FE_c_pre_echo — aqpace 에서 PFE 포인트 시스템 제거.
+    # FE_c_pre_echo — aqprice 에서 PFE 포인트 시스템 제거.
     # 매 라우팅마다 무조건 full echo → fresh t + c · queue 로 y* 선택 →
     # y* η, 비-y* η2 차등 update. fallback / 포인트 게이트 없음.
     # AQFE + Route Memory + c 페널티 + pre-echo 선택의 조합.
@@ -1509,20 +1509,20 @@ class Node:
         return y_star
 
     # -------------------------------------------------------------------------
-    # AQPACE_L0 — _route_aqpace 본체 + memory_cut_tick 이후 L=0 강제.
+    # AQPRICE_L0 — _route_aqprice 본체 + memory_cut_tick 이후 L=0 강제.
     # link_cut 시나리오에서 cut 시점부터 Route Memory 무효화하면서도 매 tick 적립 유지.
     # -------------------------------------------------------------------------
-    def _route_aqpace_l0(self, packet, current_tick, all_nodes):
+    def _route_aqprice_l0(self, packet, current_tick, all_nodes):
         cut_tick = self.params.get('memory_cut_tick', 0)
         if current_tick >= cut_tick:
             original_L = self.params['L']
             self.params['L'] = 0
             try:
-                return self._route_aqpace(packet, current_tick, all_nodes)
+                return self._route_aqprice(packet, current_tick, all_nodes)
             finally:
                 self.params['L'] = original_L
         else:
-            return self._route_aqpace(packet, current_tick, all_nodes)
+            return self._route_aqprice(packet, current_tick, all_nodes)
 
     # -------------------------------------------------------------------------
     # PFE_c_AdE_L0 — PFE_c_AdE 본체 + memory_cut_tick (보통 7000) 이후 L=0 강제.

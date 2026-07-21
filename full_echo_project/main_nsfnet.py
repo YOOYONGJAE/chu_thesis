@@ -1,8 +1,8 @@
 # =============================================================================
-# [요약] NSFNET 토폴로지 일반화 검증 — AQRERM vs AQPACE 비교
+# [요약] NSFNET 토폴로지 일반화 검증 — AQRERM vs AQPRICE 비교
 # - 6x6 grid 가 아닌 실제 백본망 (NSFNET) 에서 10 시드, λ 별 ADT median + IQR 비교
-# - "grid 특화 아님" 을 보이는 일반화 증거 생산 (main_compare_AQPACE 의 NSFNET 판)
-# - 산출물: result_compare_AQPACE_nsfnet.md / .png
+# - "grid 특화 아님" 을 보이는 일반화 증거 생산 (main_compare_AQPRICE 의 NSFNET 판)
+# - 산출물: result_compare_AQPRICE_nsfnet.md / .png
 # =============================================================================
 import random
 import numpy as np
@@ -18,7 +18,7 @@ from topology_nsfnet import NUM_NODES as NSFNET_NUM_NODES, ADJACENCY as NSFNET_A
 ETA = 0.9
 K   = 0.5
 L   = 3
-C   = 0.22   # aqpace 의 큐 페널티 가중치 (다른 알고리즘은 이 키를 안 읽음)
+C   = 0.22   # aqprice 의 큐 페널티 가중치 (다른 알고리즘은 이 키를 안 읽음)
 BASE_PARAMS = {'eta': ETA, 'k': K, 'L': L, 'c': C}
 
 TOPOLOGY_NSFNET = {'num_nodes': NSFNET_NUM_NODES, 'adjacency': NSFNET_ADJACENCY}
@@ -28,27 +28,27 @@ ALGORITHMS = [
     # 'q_routing',
     # 'aqfe',
     'aqrerm',
-    'aqpace',
+    'aqprice',
 ]
 LABELS = {
     'q_routing': 'Q-routing',
     'aqfe':      'AQFE',
     'aqrerm':    'AQRERM',
-    'aqpace':    'AQPACE',
+    'aqprice':    'AQPRICE',
 }
 # 적녹색약 친화 (Wong palette)
 COLORS = {
     'q_routing': '#117733',  # 진녹 (baseline 최단순)
     'aqfe':      '#44AA99',  # teal (AQRERM 의 부모)
     'aqrerm':    '#CC79A7',  # 분홍보라 (baseline)
-    'aqpace':    '#56B4E9',  # 하늘색 (제안 기법)
+    'aqprice':    '#56B4E9',  # 하늘색 (제안 기법)
 }
 
 # 10 개 시드 × 알고리즘 × 부하별 반복
 SEEDS = list(range(100, 1001, 100))  # [100, 200, ..., 1000]
 
 STAT_INTERVAL = 100
-MD_PATH = 'result_compare_AQPACE_nsfnet.md'
+MD_PATH = 'result_compare_AQPRICE_nsfnet.md'
 
 EXPERIMENTS = [
     # {'lam': 1, 'total_ticks': 14000, 'title': 'λ=1'},
@@ -162,7 +162,7 @@ def run_all():
             ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    filename = 'result_compare_AQPACE_nsfnet.png'
+    filename = 'result_compare_AQPRICE_nsfnet.png'
     plt.savefig(filename, dpi=150)
     print(f"\n결과 저장: {filename}")
     plt.close()

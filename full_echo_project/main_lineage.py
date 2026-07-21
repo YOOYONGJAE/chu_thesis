@@ -1,9 +1,9 @@
 # =============================================================================
-# [요약] 계보 비교 허브 — Q-routing / AQFE / AQRERM / AQPACE 4종 비교
+# [요약] 계보 비교 허브 — Q-routing / AQFE / AQRERM / AQPRICE 4종 비교
 # - 6x6 grid, 10 시드 sweep, λ 별 ADT median + IQR 그래프 + markdown 결과표
 # - ALGORITHMS 주석 토글로 원하는 조합만 실행 가능
 # - 구세대 변형 포함 버전은 legacy_algorithm_files/main_compare_PFE.py 참조
-# - 산출물: result_compare_AQPACE.md / .png
+# - 산출물: result_compare_AQPRICE.md / .png
 # =============================================================================
 import random
 import numpy as np
@@ -19,7 +19,7 @@ from topology_grid import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACEN
 ETA = 0.9
 K   = 0.5
 L   = 3
-C   = 0.22   # aqpace 의 큐 페널티 가중치 (다른 알고리즘은 이 키를 안 읽음)
+C   = 0.22   # aqprice 의 큐 페널티 가중치 (다른 알고리즘은 이 키를 안 읽음)
 BASE_PARAMS = {'eta': ETA, 'k': K, 'L': L, 'c': C}
 
 TOPOLOGY_GRID = {'num_nodes': GRID_NUM_NODES, 'adjacency': GRID_ADJACENCY}
@@ -29,33 +29,33 @@ TOPOLOGY_GRID = {'num_nodes': GRID_NUM_NODES, 'adjacency': GRID_ADJACENCY}
 # - q_routing : Boyan & Littman 1994. y* 만 단일 업데이트, echo 없음
 # - aqfe      : Adaptive Q-routing with Full Echo. 매 라우팅 전 이웃 echo
 # - aqrerm    : Random Echo + Route Memory. 확률 p = T_est/T_max 로 부분 echo
-# - aqpace    : 포인트 예산 게이트 + pre-echo + c·queue 페널티 (제안 기법)
+# - aqprice    : 포인트 예산 게이트 + pre-echo + c·queue 페널티 (제안 기법)
 # -------------------------------------------------------------------------
 ALGORITHMS = [
     'q_routing',
     'aqfe',
     'aqrerm',
-    'aqpace',
+    'aqprice',
 ]
 LABELS = {
     'q_routing': 'Q-routing',
     'aqfe':      'AQFE',
     'aqrerm':    'AQRERM',
-    'aqpace':    'AQPACE',
+    'aqprice':    'AQPRICE',
 }
 # 적녹색약 친화 (Wong palette)
 COLORS = {
     'q_routing': '#117733',  # 진녹 (baseline 최단순)
     'aqfe':      '#44AA99',  # teal (AQRERM 의 부모)
     'aqrerm':    '#CC79A7',  # 분홍보라 (baseline)
-    'aqpace':    '#56B4E9',  # 하늘색 (제안 기법)
+    'aqprice':    '#56B4E9',  # 하늘색 (제안 기법)
 }
 
 # 10 개 시드 × 알고리즘 × 부하별 반복
 SEEDS = list(range(100, 1001, 100))  # [100, 200, ..., 1000]
 
 STAT_INTERVAL = 100
-MD_PATH = 'result_compare_AQPACE.md'
+MD_PATH = 'result_compare_AQPRICE.md'
 
 EXPERIMENTS = [
     # {'lam': 2, 'total_ticks': 40000, 'title': 'λ=2'},
@@ -168,7 +168,7 @@ def run_all():
             ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    filename = 'result_compare_AQPACE.png'
+    filename = 'result_compare_AQPRICE.png'
     plt.savefig(filename, dpi=150)
     print(f"\n결과 저장: {filename}")
     plt.close()

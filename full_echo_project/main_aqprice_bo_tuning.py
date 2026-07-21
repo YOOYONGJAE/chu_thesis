@@ -1,5 +1,5 @@
 # =============================================================================
-# [요약] AQPACE 파라미터 자동 튜닝 — c / pfe_gr / pfe_b_max 를 BO 로 탐색
+# [요약] AQPRICE 파라미터 자동 튜닝 — c / pfe_gr / pfe_b_max 를 BO 로 탐색
 # - 6x6 grid, λ=3.6, 10 시드 평가, gp_minimize 40회 (random 10 + BO 30)
 # - 평가 점수: score_seed = mean(ADT 전반) + mean(ADT 후반) + 0.5·std(ADT 후반),
 #   score = 시드 간 median (작을수록 좋음)
@@ -27,7 +27,7 @@ from skopt.space import Real
 # 토폴로지 / 알고리즘 / 부하
 # -------------------------------------------------------------------------
 TOPOLOGY_GRID = {'num_nodes': GRID_NUM_NODES, 'adjacency': GRID_ADJACENCY}
-ALGORITHM = 'aqpace'
+ALGORITHM = 'aqprice'
 LAM = 3.6
 
 # -------------------------------------------------------------------------
@@ -68,8 +68,8 @@ SPACE = [
 # -------------------------------------------------------------------------
 # 출력 파일
 # -------------------------------------------------------------------------
-PNG_PATH = 'result_compare_AQPACE_p_params.png'
-MD_PATH  = 'result_compare_AQPACE_p_params.md'
+PNG_PATH = 'result_compare_AQPRICE_p_params.png'
+MD_PATH  = 'result_compare_AQPRICE_p_params.md'
 
 
 # -------------------------------------------------------------------------

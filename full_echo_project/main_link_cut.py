@@ -1,7 +1,7 @@
 # =============================================================================
 # [링크 절단 시나리오 스크립트 — 이번 연구 마감 범위 제외]
 #
-# 이 파일은 연구 진행 중 링크 장애 발생 시 Q-routing / AQFE / AQRERM / AQPACE
+# 이 파일은 연구 진행 중 링크 장애 발생 시 Q-routing / AQFE / AQRERM / AQPRICE
 # 4종 알고리즘이 얼마나 빠르게 대체 경로를 학습하는지 확인하기 위해 작성되었습니다.
 #
 # 이번 논문 마감 범위에는 해당 실험을 포함하지 않기로 결정하였으므로, 파일 하단의
@@ -14,7 +14,7 @@
 # [요약] 링크 절단 회복력 비교 — 4종 알고리즘, tick 4000 에서 링크 절단
 # - 6x6 grid, 10 시드, 시나리오 2개: top bridge (14,15) / bottom bridge (2,3) 절단
 # - Pre-cut / Post-cut ADT 를 분리 집계 → 토폴로지 변화 적응력 측정
-# - 산출물: result_compare_AQPACE_link_cut.md / .png
+# - 산출물: result_compare_AQPRICE_link_cut.md / .png
 # =============================================================================
 import random
 import numpy as np
@@ -30,7 +30,7 @@ from topology_grid import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACEN
 ETA = 0.9
 K   = 0.5
 L   = 3
-C   = 0.22   # aqpace 의 큐 페널티 가중치 (다른 알고리즘은 이 키를 안 읽음)
+C   = 0.22   # aqprice 의 큐 페널티 가중치 (다른 알고리즘은 이 키를 안 읽음)
 BASE_PARAMS = {'eta': ETA, 'k': K, 'L': L, 'c': C}
 
 TOPOLOGY_GRID = {'num_nodes': GRID_NUM_NODES, 'adjacency': GRID_ADJACENCY}
@@ -40,27 +40,27 @@ ALGORITHMS = [
     'q_routing',
     'aqfe',
     'aqrerm',
-    'aqpace',
+    'aqprice',
 ]
 LABELS = {
     'q_routing': 'Q-routing',
     'aqfe':      'AQFE',
     'aqrerm':    'AQRERM',
-    'aqpace':    'AQPACE',
+    'aqprice':    'AQPRICE',
 }
 # 적녹색약 친화 (Wong palette)
 COLORS = {
     'q_routing': '#117733',  # 진녹 (baseline 최단순)
     'aqfe':      '#44AA99',  # teal (AQRERM 의 부모)
     'aqrerm':    '#CC79A7',  # 분홍보라 (baseline)
-    'aqpace':    '#56B4E9',  # 하늘색 (제안 기법)
+    'aqprice':    '#56B4E9',  # 하늘색 (제안 기법)
 }
 
 # 10 개 시드 × 알고리즘 × (절단 시나리오 × 부하) 별 반복
 SEEDS = list(range(100, 1001, 100))  # [100, 200, ..., 1000]
 
 STAT_INTERVAL = 100
-MD_PATH = 'result_compare_AQPACE_link_cut.md'
+MD_PATH = 'result_compare_AQPRICE_link_cut.md'
 
 # -------------------------------------------------------------------------
 # 링크 절단 시나리오 (main_link_cut.py 기반)
@@ -187,7 +187,7 @@ def run_all():
                 ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    filename = 'result_compare_AQPACE_link_cut.png'
+    filename = 'result_compare_AQPRICE_link_cut.png'
     plt.savefig(filename, dpi=150)
     print(f"\n결과 저장: {filename}")
     plt.close()

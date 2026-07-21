@@ -2,9 +2,9 @@
 임시 overnight runner — main_compare_PFE 와 동일 로직으로 3 개 실험을 순차 실행.
 
 순서:
-  seq1 : aqrerm_pre / aqrerm_c / aqrerm_c_pre / aqpace   @ λ ∈ {2, 2.5, 3}
-  seq2 : aqpace_no_pre_no_queue / aqpace_no_pre / aqpace_no_queue / aqpace   @ λ ∈ {2, 2.5, 3}
-  seq3 : aqpace_no_pre_no_queue / aqpace_no_pre / aqpace_no_queue / aqpace   @ λ ∈ {3.5, 3.7, 3.8}
+  seq1 : aqrerm_pre / aqrerm_c / aqrerm_c_pre / aqprice   @ λ ∈ {2, 2.5, 3}
+  seq2 : aqprice_no_pre_no_queue / aqprice_no_pre / aqprice_no_queue / aqprice   @ λ ∈ {2, 2.5, 3}
+  seq3 : aqprice_no_pre_no_queue / aqprice_no_pre / aqprice_no_queue / aqprice   @ λ ∈ {3.5, 3.7, 3.8}
 
 각 실험마다 PNG + MD = 2 파일 → 총 6 파일 생성.
 파일명: result_compare_PFE_<seq명>.png / .md
@@ -36,30 +36,30 @@ TOTAL_TICKS = 40000
 # LABELS / COLORS (main_compare_PFE 와 동일 풀)
 # -------------------------------------------------------------------------
 LABELS = {
-    'aqpace_no_pre_no_queue':            'AQPACE(-pre,-queue)',
-    'aqpace_no_queue':        'AQPACE(-queue)',
+    'aqprice_no_pre_no_queue':            'AQPRICE(-pre,-queue)',
+    'aqprice_no_queue':        'AQPRICE(-queue)',
     'aqrerm_c':                 'AQRERM_c',
     'aqrerm':                   'AQRERM',
     'aqrerm_no_L':              'AQRERM_no_L',
-    'aqpace_no_pre':          'AQPACE(-pre)',
-    'aqpace':      'AQPACE',
+    'aqprice_no_pre':          'AQPRICE(-pre)',
+    'aqprice':      'AQPRICE',
     'aqrerm_c_pre':             'AQRERM_c_pre_RERM',
     'aqrerm_pre':               'AQRERM_pre',
-    'aqpace_no_point':            'AQPACE(-point)',
-    'aqpace_no_L': 'AQPACE(-L)',
+    'aqprice_no_point':            'AQPRICE(-point)',
+    'aqprice_no_L': 'AQPRICE(-L)',
 }
 COLORS = {
-    'aqpace_no_pre_no_queue':            '#0072B2',
-    'aqpace_no_queue':        '#DAA32D',
+    'aqprice_no_pre_no_queue':            '#0072B2',
+    'aqprice_no_queue':        '#DAA32D',
     'aqrerm_c':                 '#009E73',  # 청록 (main_compare_PFE 의 변경 전 표준값)
     'aqrerm':                   '#CC79A7',
     'aqrerm_no_L':              '#882255',
-    'aqpace_no_pre':          '#D55E00',
-    'aqpace':      '#56B4E9',
+    'aqprice_no_pre':          '#D55E00',
+    'aqprice':      '#56B4E9',
     'aqrerm_c_pre':             '#F0E442',
     'aqrerm_pre':               '#117733',
-    'aqpace_no_point':            '#000000',
-    'aqpace_no_L': '#3700FF',
+    'aqprice_no_point':            '#000000',
+    'aqprice_no_L': '#3700FF',
 }
 
 # -------------------------------------------------------------------------
@@ -68,17 +68,17 @@ COLORS = {
 EXPERIMENT_SEQUENCES = [
     {
         'name': 'seq1_aqrerm_family_low',
-        'algorithms': ['aqrerm_pre', 'aqrerm_c', 'aqrerm_c_pre', 'aqpace'],
+        'algorithms': ['aqrerm_pre', 'aqrerm_c', 'aqrerm_c_pre', 'aqprice'],
         'lambdas': [2, 2.5, 3],
     },
     {
         'name': 'seq2_pfe_family_low',
-        'algorithms': ['aqpace_no_pre_no_queue', 'aqpace_no_pre', 'aqpace_no_queue', 'aqpace'],
+        'algorithms': ['aqprice_no_pre_no_queue', 'aqprice_no_pre', 'aqprice_no_queue', 'aqprice'],
         'lambdas': [2, 2.5, 3],
     },
     {
         'name': 'seq3_pfe_family_high',
-        'algorithms': ['aqpace_no_pre_no_queue', 'aqpace_no_pre', 'aqpace_no_queue', 'aqpace'],
+        'algorithms': ['aqprice_no_pre_no_queue', 'aqprice_no_pre', 'aqprice_no_queue', 'aqprice'],
         'lambdas': [3.5, 3.7, 3.8],
     },
 ]

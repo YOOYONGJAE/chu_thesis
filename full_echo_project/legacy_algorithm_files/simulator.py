@@ -252,7 +252,7 @@ class Simulator:
                 node.tick_decay_tmax(tick)
 
             # 2.6 PFE per-tick 포인트 적립 — 모든 노드 매 tick (적립 비활성 노드는 즉시 no-op)
-            # aqpace 변형에서만 활성화. 큐가 비어 라우팅 안 한 노드도 적립 진행.
+            # aqprice 변형에서만 활성화. 큐가 비어 라우팅 안 한 노드도 적립 진행.
             for node in self.nodes:
                 node.tick_accumulate_point(tick)
 

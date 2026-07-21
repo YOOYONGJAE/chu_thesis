@@ -1,7 +1,7 @@
 # =============================================================================
 # [요약] tick 기반 네트워크 시뮬레이터 — 패킷 생성 / 라우팅 / 통계 집계
-# - 4종 (Q-routing / AQFE / AQRERM / AQPACE) 전용 정리판
-# - 진단 시리즈: ADT / 큐 길이 / T_est / T_max / AQPACE 포인트·에코 발동 비율
+# - 4종 (Q-routing / AQFE / AQRERM / AQPRICE) 전용 정리판
+# - 진단 시리즈: ADT / 큐 길이 / T_est / T_max / AQPRICE 포인트·에코 발동 비율
 # - RL 컨트롤러 연동, T_max 가속 감쇠, AdE 진단 등은
 #   legacy_algorithm_files/simulator.py 에 보존
 # =============================================================================
@@ -14,7 +14,7 @@ from node import Node, Packet
 class Simulator:
     def __init__(self, algorithm, params, seed, topology):
         """
-        algorithm: 'q_routing' | 'aqfe' | 'aqrerm' | 'aqpace'
+        algorithm: 'q_routing' | 'aqfe' | 'aqrerm' | 'aqprice'
         params: {'eta': float, 'k': float, 'L': int, 'c': float, ...}
         seed: 난수 시드 (rng_traffic, rng_order 분리)
         topology: {'num_nodes': int, 'adjacency': dict}
@@ -74,7 +74,7 @@ class Simulator:
         queue_len_series = []   # stat_interval 시점의 모든 노드 queue 길이 합
         t_est_series     = []   # stat_interval 시점의 네트워크 평균 T_est (finite 만)
         t_max_series     = []   # stat_interval 시점의 네트워크 평균 T_max (finite 만)
-        # AQPACE 진단 시계열 — stat_interval 윈도우 단위로 측정
+        # AQPRICE 진단 시계열 — stat_interval 윈도우 단위로 측정
         # 다른 알고리즘에선 카운터/total_point 가 0 이므로 시계열도 모두 0
         pfe_total_point_series     = []  # 윈도우 종료 시점의 네트워크 평균 누적 포인트
         pfe_full_echo_ratio_series = []  # 윈도우 동안 Full Echo 발동 / 라우팅 호출
@@ -150,7 +150,7 @@ class Simulator:
                 else:
                     self.nodes[next_hop].incoming.append(pkt)
 
-            # 2.5 AQPACE per-tick 포인트 적립 — 모든 노드 매 tick
+            # 2.5 AQPRICE per-tick 포인트 적립 — 모든 노드 매 tick
             #     (적립 비활성 노드는 즉시 no-op. 큐가 비어 라우팅 안 한 노드도 적립 진행)
             for node in self.nodes:
                 node.tick_accumulate_point(tick)
@@ -183,7 +183,7 @@ class Simulator:
                 t_est_series.append(float(np.mean(t_est_vals)) if t_est_vals else 0.0)
                 t_max_series.append(float(np.mean(t_max_vals)) if t_max_vals else 0.0)
 
-                # AQPACE 진단: 윈도우 동안 누적된 노드 카운터를 합산해 비율 계산 후 리셋
+                # AQPRICE 진단: 윈도우 동안 누적된 노드 카운터를 합산해 비율 계산 후 리셋
                 tp_sum          = sum(n.total_point for n in self.nodes)
                 fe_count_sum    = sum(n.pfe_window_full_echo_count for n in self.nodes)
                 route_count_sum = sum(n.pfe_window_route_count     for n in self.nodes)

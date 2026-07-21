@@ -1,8 +1,8 @@
 # =============================================================================
-# [요약] AQPACE 단독 — 포인트 예산 상한 pfe_b_max sweep (신버전)
+# [요약] AQPRICE 단독 — 포인트 예산 상한 pfe_b_max sweep (신버전)
 # - 6x6 grid, 단일 시드 200, c=0.3 고정, λ=3.5/3.7 장기 관찰 (80000 tick)
 # - B_MAX_VALUES [0.2~0.4] 미세 탐색 (BO best=0.5 근방 재확인용)
-# - 산출물: result_AQPACE_maxTest_6by6.md / .png
+# - 산출물: result_AQPRICE_maxTest_6by6.md / .png
 # - ※ main_pfe_bmax_6by6.py (구버전 b_max sweep, pfe_c_ade 대상) 와 기능 중복
 # =============================================================================
 import random
@@ -27,8 +27,8 @@ C_VALUE = 0.3   # c 는 고정. 이 스크립트는 pfe_b_max 만 sweep.
 
 BASE_PARAMS = {'eta': ETA, 'k': K, 'L': L, 'c': C_VALUE}
 
-# 단일 알고리즘 — aqpace
-ALGORITHM = 'aqpace'
+# 단일 알고리즘 — aqprice
+ALGORITHM = 'aqprice'
 
 # pfe_b_max sweep 설정
 B_MAX_VALUES = [0.2, 0.3, 0.4]
@@ -40,7 +40,7 @@ B_COLORS = plt.cm.viridis(np.linspace(0, 1, len(B_MAX_VALUES)))
 DASH_STYLE = (0, (8, 4))
 
 STAT_INTERVAL = 200
-MD_PATH = 'result_AQPACE_maxTest_6by6.md'
+MD_PATH = 'result_AQPRICE_maxTest_6by6.md'
 
 EXPERIMENTS = [
     # {'lam': 2, 'total_ticks': 80000, 'title': 'λ=2'},
@@ -57,12 +57,12 @@ def run_all():
     fig, axes = plt.subplots(1, len(EXPERIMENTS), figsize=(45, 8), squeeze=False)
     axes = axes.flatten()  # EXPERIMENTS 가 1 개여도 1D 배열로 유지
     fig.suptitle(
-        f"6x6 Grid — aqpace pfe_b_max sweep "
+        f"6x6 Grid — aqprice pfe_b_max sweep "
         f"(c={C_VALUE}, L={L}, seed={SEED})"
     )
 
     with open(MD_PATH, 'w', encoding='utf-8') as md:
-        md.write('# 6x6 Grid AQPACE pfe_b_max sweep\n\n')
+        md.write('# 6x6 Grid AQPRICE pfe_b_max sweep\n\n')
 
         for ax, exp in zip(axes, EXPERIMENTS):
             lam = exp['lam']
@@ -132,7 +132,7 @@ def run_all():
             ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    filename = 'result_AQPACE_maxTest_6by6.png'
+    filename = 'result_AQPRICE_maxTest_6by6.png'
     plt.savefig(filename, dpi=150)
     print(f"\n결과 저장: {filename}")
     plt.close()

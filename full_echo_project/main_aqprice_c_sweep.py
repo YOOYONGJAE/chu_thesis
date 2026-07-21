@@ -1,8 +1,8 @@
 # =============================================================================
-# [요약] AQPACE 단독 — 큐 페널티 계수 c 의 효과 측정 (c-sweep)
+# [요약] AQPRICE 단독 — 큐 페널티 계수 c 의 효과 측정 (c-sweep)
 # - 6x6 grid, 단일 시드 100, λ=2/3/3.5 (14000 tick)
 # - C_VALUES 를 바꿔가며 ADT 곡선 비교 → c 항 유무/크기가 성능에 주는 영향 확인
-# - 산출물: result_aqpace_ctest_6by6.md / .png
+# - 산출물: result_aqprice_ctest_6by6.md / .png
 # =============================================================================
 import random
 import numpy as np
@@ -25,8 +25,8 @@ L   = 3
 
 BASE_PARAMS = {'eta': ETA, 'k': K, 'L': L}
 
-# 단일 알고리즘 — aqpace (매 tick 적립 변형)
-ALGORITHM = 'aqpace'
+# 단일 알고리즘 — aqprice (매 tick 적립 변형)
+ALGORITHM = 'aqprice'
 
 # c-sweep 설정
 C_VALUES = [0, 0.3]
@@ -35,7 +35,7 @@ C_VALUES = [0, 0.3]
 C_COLORS = plt.cm.viridis(np.linspace(0, 1, len(C_VALUES)))
 
 STAT_INTERVAL = 100
-MD_PATH = 'result_aqpace_ctest_6by6.md'
+MD_PATH = 'result_aqprice_ctest_6by6.md'
 
 EXPERIMENTS = [
     # {'lam': 1, 'total_ticks': 14000, 'title': 'λ=1'},
@@ -51,10 +51,10 @@ EXPERIMENTS = [
 def run_all():
     fig, axes = plt.subplots(1, len(EXPERIMENTS), figsize=(30, 8), squeeze=False)
     axes = axes.flatten()  # EXPERIMENTS 가 1 개여도 1D 배열로 유지
-    fig.suptitle(f"6x6 Grid — aqpace c-sweep (L={L})")
+    fig.suptitle(f"6x6 Grid — aqprice c-sweep (L={L})")
 
     with open(MD_PATH, 'w', encoding='utf-8') as md:
-        md.write('# 6x6 Grid AQPACE c-sweep\n\n')
+        md.write('# 6x6 Grid AQPRICE c-sweep\n\n')
 
         for ax, exp in zip(axes, EXPERIMENTS):
             lam = exp['lam']
@@ -125,7 +125,7 @@ def run_all():
             ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    filename = 'result_aqpace_ctest_6by6.png'
+    filename = 'result_aqprice_ctest_6by6.png'
     plt.savefig(filename, dpi=150)
     print(f"\n결과 저장: {filename}")
     plt.close()

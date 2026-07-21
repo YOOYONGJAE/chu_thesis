@@ -1,6 +1,6 @@
 # =============================================================================
 # [요약] 노드 구현 — Packet + Node (Q 테이블, 4종 라우팅 알고리즘)
-# - Q-routing / AQFE / AQRERM / AQPACE 만 포함하는 정리판
+# - Q-routing / AQFE / AQRERM / AQPRICE 만 포함하는 정리판
 # - 구세대 변형 (PFE 계열, AQRERM 하드코딩 시리즈, RL 컨트롤러 연동 등) 의
 #   전체 구현은 legacy_algorithm_files/node.py 에 보존
 # =============================================================================
@@ -10,7 +10,7 @@ from collections import deque
 
 
 # =====================================================================
-# AQPACE 상수
+# AQPRICE 상수
 # - 노드 별 total_point (Full Echo 사용 예산) 의 초기값
 # - gr, b_max, c 등은 self.params 에서 읽음 (main 스크립트에서 override 가능)
 # =====================================================================
@@ -23,7 +23,7 @@ class Packet:
         self.dst = dst
         self.created_at = created_at
         self.queue_entry_tick = created_at  # 현재 큐 진입 tick (큐 이동마다 갱신)
-        self.route_memory = []              # 방문 노드 리스트 (AQRERM / AQPACE 의 Route Memory)
+        self.route_memory = []              # 방문 노드 리스트 (AQRERM / AQPRICE 의 Route Memory)
 
 
 class Node:
@@ -45,24 +45,24 @@ class Node:
         self.T_est = 0.0
         self.T_max = 1.0
 
-        # AQPACE: 매 tick 포인트 적립 활성 여부
+        # AQPRICE: 매 tick 포인트 적립 활성 여부
         # 활성 시 simulator tick 루프가 모든 노드에 tick_accumulate_point() 호출 →
         # 큐가 비어 라우팅 안 하는 tick 에도 gr 만큼 적립이 진행됨.
-        self.tick_accum_enabled = (algorithm == 'aqpace')
+        self.tick_accum_enabled = (algorithm == 'aqprice')
 
-        # AQPACE: echo 응답 시 받은 이웃 큐 길이 캐시 (실시간 직접 읽기 대체)
+        # AQPRICE: echo 응답 시 받은 이웃 큐 길이 캐시 (실시간 직접 읽기 대체)
         self.last_known_queue = {n: 0 for n in neighbors}
 
-        # AQPACE: 누적 포인트 (Full Echo 사용 예산)
+        # AQPRICE: 누적 포인트 (Full Echo 사용 예산)
         self.total_point = PFE_TOTAL_POINT_INITIAL
 
-        # AQPACE 진단 카운터 — simulator 가 stat_interval 시점에 읽고 0 으로 리셋
+        # AQPRICE 진단 카운터 — simulator 가 stat_interval 시점에 읽고 0 으로 리셋
         # full_echo_ratio = pfe_window_full_echo_count / pfe_window_route_count
         self.pfe_window_full_echo_count = 0
         self.pfe_window_route_count     = 0
 
     # -------------------------------------------------------------------------
-    # T_est 업데이트 (AQFE / AQRERM / AQPACE)
+    # T_est 업데이트 (AQFE / AQRERM / AQPRICE)
     # T_est = 모든 목적지에 대해 min_y Q[d][y] 의 평균 (AQRERM 정의)
     # -------------------------------------------------------------------------
     def update_T_est(self):
@@ -77,7 +77,7 @@ class Node:
             self.T_max = self.T_est
 
     # -------------------------------------------------------------------------
-    # AQPACE per-tick 포인트 적립 — 매 tick 모든 노드에 호출 (simulator tick 루프).
+    # AQPRICE per-tick 포인트 적립 — 매 tick 모든 노드에 호출 (simulator tick 루프).
     # tick_accum_enabled=False 인 노드는 즉시 return.
     # 라우팅 호출 여부와 무관하게 큐가 비어 있어도 적립 진행 →
     # 한가한 노드도 풀에코 예산을 천천히 축적 가능.
@@ -121,11 +121,11 @@ class Node:
             return self._route_aqfe(packet, current_tick, all_nodes)
         elif self.algorithm == 'aqrerm':
             return self._route_aqrerm(packet, current_tick, all_nodes)
-        elif self.algorithm == 'aqpace':
-            return self._route_aqpace(packet, current_tick, all_nodes)
+        elif self.algorithm == 'aqprice':
+            return self._route_aqprice(packet, current_tick, all_nodes)
         else:
             raise ValueError(f"unknown algorithm: {self.algorithm} "
-                             f"(정리판은 q_routing/aqfe/aqrerm/aqpace 만 지원, "
+                             f"(정리판은 q_routing/aqfe/aqrerm/aqprice 만 지원, "
                              f"그 외 변형은 legacy_algorithm_files/ 참조)")
 
     # -------------------------------------------------------------------------
@@ -228,7 +228,7 @@ class Node:
         return y_star
 
     # -------------------------------------------------------------------------
-    # AQPACE — Adaptive Q-routing with Point-budgeted Advance Congestion-aware Echo
+    # AQPRICE — Adaptive Q-Routing with Point-Regulated Inline Congestion Echo
     #
     # 포인트 예산 게이트 + pre-echo (echo → 선정 → 학습) + 큐 페널티 (c·queue).
     #   - 적립: simulator tick 루프가 tick_accumulate_point() 로 매 tick gr 적립
@@ -243,7 +243,7 @@ class Node:
     #       2) stale 캐시 (Q + c·last_known_queue) 로 y_star 선정
     #       3) y_star 만 update
     # -------------------------------------------------------------------------
-    def _route_aqpace(self, packet, current_tick, all_nodes):
+    def _route_aqprice(self, packet, current_tick, all_nodes):
         self.pfe_window_route_count += 1
 
         dst   = packet.dst

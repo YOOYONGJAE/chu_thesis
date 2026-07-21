@@ -2,7 +2,7 @@
 # [요약] 링크 절단 회복력 비교 — 6x6 grid, 10 시드, tick 4000 에서 링크 절단
 # - 시나리오 2개: top bridge (14,15) 절단 / bottom bridge (2,3) 절단
 # - Pre-cut / Post-cut ADT 를 분리 집계 → 토폴로지 변화 적응력 측정
-# - AQRERM vs AQPACE 정면 비교 + 양쪽의 L 유무 ablation 에 사용
+# - AQRERM vs AQPRICE 정면 비교 + 양쪽의 L 유무 ablation 에 사용
 # =============================================================================
 import random
 import numpy as np
@@ -30,27 +30,27 @@ ALGORITHMS = [
     'aqrerm',
     # 'aqrerm_c',
     # 'aqrerm_c_pre',
-    # 'aqpace_no_pre_no_queue',
-    # 'aqpace_no_pre',
-    # 'aqpace_no_queue',
-    'aqpace',
-    # 'aqpace_no_point',
-    # 'aqpace_no_L',
+    # 'aqprice_no_pre_no_queue',
+    # 'aqprice_no_pre',
+    # 'aqprice_no_queue',
+    'aqprice',
+    # 'aqprice_no_point',
+    # 'aqprice_no_L',
     # 'aqrerm_no_L',
     # 'aqrerm_4000_no_L',
 ]
 LABELS = {
     'q_routing':                'Q-routing',
     'aqfe':                     'AQFE',
-    'aqpace_no_pre_no_queue':            'AQPACE(-pre,-queue)',
-    'aqpace_no_queue':        'AQPACE(-queue)',
+    'aqprice_no_pre_no_queue':            'AQPRICE(-pre,-queue)',
+    'aqprice_no_queue':        'AQPRICE(-queue)',
     'aqrerm_c':                  'AQRERM_c',
     'aqrerm':                   'AQRERM',
-    'aqpace_no_pre':          'AQPACE(-pre)',
-    'aqpace':      'AQPACE',
+    'aqprice_no_pre':          'AQPRICE(-pre)',
+    'aqprice':      'AQPRICE',
     'aqrerm_c_pre':             'AQRERM_c_pre_RERM',
-    'aqpace_no_point':            'AQPACE(-point)',
-    'aqpace_no_L': 'AQPACE(-L)',
+    'aqprice_no_point':            'AQPRICE(-point)',
+    'aqprice_no_L': 'AQPRICE(-L)',
     'aqrerm_no_L':              'AQRERM_no_L',
     'aqrerm_4000_no_L':         'AQRERM_4000_no_L',
 }
@@ -58,15 +58,15 @@ LABELS = {
 COLORS = {
     'q_routing':                '#117733',  # 진녹 (baseline 최단순)
     'aqfe':                     '#44AA99',  # teal (AQRERM 의 부모)
-    'aqpace_no_pre_no_queue':            '#0072B2',  # 파랑
-    'aqpace_no_queue':        '#E69F00',  # 주황
+    'aqprice_no_pre_no_queue':            '#0072B2',  # 파랑
+    'aqprice_no_queue':        '#E69F00',  # 주황
     'aqrerm_c':                  '#009E73',  # 청록
     'aqrerm':                   '#CC79A7',  # 분홍보라
-    'aqpace_no_pre':          '#D55E00',  # 주홍 (vermillion)
-    'aqpace':      '#56B4E9',  # 하늘색
+    'aqprice_no_pre':          '#D55E00',  # 주홍 (vermillion)
+    'aqprice':      '#56B4E9',  # 하늘색
     'aqrerm_c_pre':             '#F0E442',  # 노랑
-    'aqpace_no_point':            '#000000',  # 검정 (always-FE 강조)
-    'aqpace_no_L': '#999999',  # 회색 (L=0, no Route Memory)
+    'aqprice_no_point':            '#000000',  # 검정 (always-FE 강조)
+    'aqprice_no_L': '#999999',  # 회색 (L=0, no Route Memory)
     'aqrerm_no_L':              '#882255',  # 진한 자주 (AQRERM family, 항상 no L)
     'aqrerm_4000_no_L':         "#0400FF",  # 진한 파랑 (AQRERM family, 4000 이후 no L)
 }
