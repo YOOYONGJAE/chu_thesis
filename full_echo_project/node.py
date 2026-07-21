@@ -61,6 +61,13 @@ class Node:
         self.pfe_window_full_echo_count = 0
         self.pfe_window_route_count     = 0
 
+        # 에코 비용 진단 — 실행 전체 누적 (리셋 없음). simulator 가 종료 시 합산해 노출.
+        # echo_query_count = 이웃에게 전달시간 추정을 조회한 총 횟수 (best_estimate 호출 수)
+        # route_call_count = 이 노드가 라우팅 결정을 내린 총 횟수
+        # 결정당 에코 이웃 수 = 전체 echo_query_count 합 / 전체 route_call_count 합
+        self.echo_query_count = 0
+        self.route_call_count = 0
+
     # -------------------------------------------------------------------------
     # T_est 업데이트 (AQFE / AQRERM / AQPRICE)
     # T_est = 모든 목적지에 대해 min_y Q[d][y] 의 평균 (AQRERM 정의)
@@ -115,6 +122,7 @@ class Node:
     # 라우팅: 패킷을 받아 다음 홉 반환, Q 테이블 업데이트
     # -------------------------------------------------------------------------
     def route(self, packet, current_tick, all_nodes):
+        self.route_call_count += 1
         if self.algorithm == 'q_routing':
             return self._route_q(packet, current_tick, all_nodes)
         elif self.algorithm == 'aqfe':
@@ -141,6 +149,7 @@ class Node:
         q = current_tick - packet.queue_entry_tick
         s = 1
         t = all_nodes[y_star].best_estimate(dst)
+        self.echo_query_count += 1  # y_star 하나만 조회 (echo 없음)
 
         self.Q[dst][y_star] += eta * (q + s + t - self.Q[dst][y_star])
 
@@ -159,6 +168,7 @@ class Node:
 
         # 모든 이웃의 t 값 수집 (Full Echo)
         t_values = {n: all_nodes[n].best_estimate(dst) for n in self.neighbors}
+        self.echo_query_count += len(self.neighbors)  # 모든 이웃 조회 (Full Echo)
 
         y_star = min(self.neighbors, key=lambda n: self.Q[dst][n])
         q = current_tick - packet.queue_entry_tick
@@ -207,6 +217,7 @@ class Node:
         for n in self.neighbors:
             if n != y_star and random.random() < p:
                 echo_set.add(n)
+        self.echo_query_count += len(echo_set)  # 실제 echo 한 이웃 수 (부분 echo)
 
         for n in echo_set:
             # Route Memory: y=n에서 t 추정 시 현재 노드 x 제외
@@ -279,6 +290,7 @@ class Node:
             # 1차: 모든 이웃의 fresh t_n + queue 수집
             t_values = {n: all_nodes[n].best_estimate(dst, exclude_node=self.id)
                         for n in self.neighbors}
+            self.echo_query_count += len(self.neighbors)  # Full Echo: 모든 이웃 조회
             for n in self.neighbors:
                 self.last_known_queue[n] = len(all_nodes[n].queue)
 
@@ -311,6 +323,7 @@ class Node:
             )
             # y_star 만 update
             t = all_nodes[y_star].best_estimate(dst, exclude_node=self.id)
+            self.echo_query_count += 1  # 포인트 부족(Q-routing 모드): y_star 하나만 조회
             self.last_known_queue[y_star] = len(all_nodes[y_star].queue)
             self.Q[dst][y_star] += eta * (
                 q + s + t - self.Q[dst][y_star]

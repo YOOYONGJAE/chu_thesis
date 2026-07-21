@@ -208,6 +208,11 @@ class Simulator:
         self.undelivered_count = sum(
             len(node.queue) + len(node.incoming) for node in self.nodes
         )
+
+        # 에코 비용 진단 — 실행 전체 노드 카운터 합산
+        # echo_cost = total_echo_queries / total_route_calls = 결정당 평균 조회 이웃 수
+        self.total_echo_queries = sum(node.echo_query_count for node in self.nodes)
+        self.total_route_calls  = sum(node.route_call_count for node in self.nodes)
         # =====================================================================
         # [절단 전/후 link_usage 결과 노출 — 이번 연구 마감 범위 제외]
         # 재활성화 시 아래 주석과 link_usage_pre/post_cut 초기화·집계 블록을
