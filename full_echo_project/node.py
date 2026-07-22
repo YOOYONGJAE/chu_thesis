@@ -260,7 +260,10 @@ class Node:
         dst   = packet.dst
         eta   = self.params['eta']
         k     = self.params['k']
-        L     = self.params['L']
+        # AQPRICE 정식 구성은 라우트 메모리 미포함 → 전용 키 aqprice_L 로 읽고 기본 0(=미사용).
+        # 일반 스크립트는 aqprice_L 을 안 넘기므로 자동 L=0. ablation 스크립트만 명시적으로 aqprice_L 세팅.
+        # (AQRERM 은 그대로 self.params['L'] 을 읽어 라우트 메모리 유지)
+        L     = self.params.get('aqprice_L', 0)
         c_q   = self.params['c']
 
         self.update_T_est()

@@ -10,7 +10,7 @@
 # ⑥ 정착 후 상위 5% 지연 (뒤쪽 절반 95퍼센타일의 시드 간 중앙값)
 # ⑦ 랜덤시드 간 변동성 (정착 ADT 의 시드 간 표준편차 / 평균)
 # ⑧ 결정당 에코 이웃 수 (이웃 조회 총횟수 / 라우팅 결정 총횟수)
-# - 기준선 = AQPRICE 정착 ADT 중앙값 × 1.2 (양 알고리즘에 공통 적용)
+# - 기준선 = AQPRICE 정착 ADT 중앙값보다 20% 높은 값 (× 1.2, 양 알고리즘에 공통 적용)
 # - 산출물: result_compare_AQPRICE_final.md / .png
 # =============================================================================
 import random
@@ -154,6 +154,7 @@ def run_lambda(ax, lam, total_ticks, md):
         print(f"\n--- {label} ---")
         adt_runs = []
         echo_costs = []
+        gens, dlvs, unds, rates = [], [], [], []
         for seed in SEEDS:
             print(f"  Running seed={seed}...")
             sim, adt = run_one(algo, lam, total_ticks, seed)
@@ -162,6 +163,7 @@ def run_lambda(ax, lam, total_ticks, md):
             print(f"    seed={seed:4d}  generated={gen:6d}  delivered={dlv:6d}  "
                   f"undelivered={und:6d}  delivery_rate={rate:5.1f}%")
             adt_runs.append(adt)
+            gens.append(gen); dlvs.append(dlv); unds.append(und); rates.append(rate)
             # 결정당 에코 이웃 수 (이 시드 실행 전체 누적)
             ec = (sim.total_echo_queries / sim.total_route_calls
                   if sim.total_route_calls > 0 else 0.0)
@@ -173,6 +175,13 @@ def run_lambda(ax, lam, total_ticks, md):
             'q25':       np.nanpercentile(adt_arr, 25, axis=0),
             'q75':       np.nanpercentile(adt_arr, 75, axis=0),
             'echo_cost': float(np.nanmedian(echo_costs)),   # 시드 간 중앙값
+            # 전달 통계 — 붕괴를 감추지 않도록 평균 사용 + 성공률 최고/최저
+            'gen_mean':  float(np.mean(gens)),
+            'dlv_mean':  float(np.mean(dlvs)),
+            'und_mean':  float(np.mean(unds)),
+            'rate_mean': float(np.mean(rates)),
+            'rate_max':  float(np.max(rates)),
+            'rate_min':  float(np.min(rates)),
         }
 
     # ---- threshold = AQPRICE 의 SS median × 1.2 ----
@@ -258,31 +267,46 @@ def run_lambda(ax, lam, total_ticks, md):
     ax.grid(True, alpha=0.3)
 
     # ---- MD 로그 ----
-    md.write(f"### 기준선 : AQPRICE 정착 ADT 중앙값 × {CONVERGENCE_THRESHOLD_RATIO} = **{threshold:.2f}**\n\n")
     md.write("| 지표 | AQRERM | AQPRICE | 개선 |\n")
     md.write("|---|---:|---:|---:|\n")
-    md.write(f"| AQPRICE 기준선 도달 시간 (tick) | {aqrerm_m['conv_tick']} | {aqprice_m['conv_tick']} | {conv_disp} |\n")
-    md.write(f"| 정착 ADT 중앙값 | {aqrerm_m['ss']['median']:.2f} | {aqprice_m['ss']['median']:.2f} | {ss_imp:+.1f}% |\n")
-    md.write(f"| 정착 ADT 중간 50% 범위 | [{aqrerm_m['ss']['q25']:.2f}, {aqrerm_m['ss']['q75']:.2f}] | "
+    md.write(f"| [알고리즘별] 정착 ADT 중앙값 (SS ADT median) | {aqrerm_m['ss']['median']:.2f} | {aqprice_m['ss']['median']:.2f} | {ss_imp:+.1f}% |\n")
+    md.write(f"| [알고리즘별] 정착 ADT 중간 50% 범위 (IQR) | [{aqrerm_m['ss']['q25']:.2f}, {aqrerm_m['ss']['q75']:.2f}] | "
              f"[{aqprice_m['ss']['q25']:.2f}, {aqprice_m['ss']['q75']:.2f}] | - |\n")
-    md.write(f"| 누적 ADT | {aqrerm_m['auc']:.0f} | {aqprice_m['auc']:.0f} | {auc_imp:+.1f}% |\n")
-    md.write(f"| 최악 ADT (구간 최댓값) | {aqrerm_m['worst']:.2f} | {aqprice_m['worst']:.2f} | {worst_imp:+.1f}% |\n")
-    md.write(f"| 정착 후 상위 5% 지연 | {aqrerm_m['p95']:.2f} | {aqprice_m['p95']:.2f} | {p95_imp:+.1f}% |\n")
-    md.write(f"| 랜덤시드 간 변동성 (작을수록 일관적) | {aqrerm_m['ss']['cv']:.3f} | {aqprice_m['ss']['cv']:.3f} | "
+    md.write(f"| [알고리즘별] 누적 ADT (AUC) | {aqrerm_m['auc']:.0f} | {aqprice_m['auc']:.0f} | {auc_imp:+.1f}% |\n")
+    md.write(f"| [알고리즘별] 최악 ADT (worst spike, 구간 최댓값) | {aqrerm_m['worst']:.2f} | {aqprice_m['worst']:.2f} | {worst_imp:+.1f}% |\n")
+    md.write(f"| [알고리즘별] 정착 후 상위 5% 지연 (P95) | {aqrerm_m['p95']:.2f} | {aqprice_m['p95']:.2f} | {p95_imp:+.1f}% |\n")
+    md.write(f"| [알고리즘별] 랜덤시드 간 변동성 (CV, 작을수록 일관적) | {aqrerm_m['ss']['cv']:.3f} | {aqprice_m['ss']['cv']:.3f} | "
              f"{cv_factor:.1f}× |\n")
-    md.write(f"| 결정당 에코 이웃 수 | {aqrerm_m['echo_cost']:.2f} | {aqprice_m['echo_cost']:.2f} | {echo_imp:+.1f}% |\n\n")
+    md.write(f"| [알고리즘별] 결정당 에코 이웃 수 (echo cost) | {aqrerm_m['echo_cost']:.2f} | {aqprice_m['echo_cost']:.2f} | {echo_imp:+.1f}% |\n")
+    md.write(f"| [AQPRICE 기준] 기준선 도달 시간 (convergence time, tick) | {aqrerm_m['conv_tick']} | {aqprice_m['conv_tick']} | {conv_disp} |\n")
+    md.write(f"* 기준선 : AQPRICE 정착 ADT 중앙값보다 20% 높은 값 (× {CONVERGENCE_THRESHOLD_RATIO})\n\n")
+
+    # ---- MD: 전달 통계 (시드 집계 요약) ----
+    aqrerm_r  = results['aqrerm']
+    aqprice_r = results['aqprice']
+    md.write(f"#### 패킷 전달 통계 ({len(SEEDS)} 시드)\n\n")
+    md.write("| 항목 | AQRERM | AQPRICE |\n")
+    md.write("|---|---:|---:|\n")
+    md.write(f"| 생성 (평균) | {aqrerm_r['gen_mean']:.0f} | {aqprice_r['gen_mean']:.0f} |\n")
+    md.write(f"| 전달 (평균) | {aqrerm_r['dlv_mean']:.0f} | {aqprice_r['dlv_mean']:.0f} |\n")
+    md.write(f"| 미전달 (평균) | {aqrerm_r['und_mean']:.0f} | {aqprice_r['und_mean']:.0f} |\n")
+    md.write(f"| 성공률 평균 | {aqrerm_r['rate_mean']:.1f}% | {aqprice_r['rate_mean']:.1f}% |\n")
+    md.write(f"| 성공률 최고 | {aqrerm_r['rate_max']:.1f}% | {aqprice_r['rate_max']:.1f}% |\n")
+    md.write(f"| 성공률 최저 | {aqrerm_r['rate_min']:.1f}% | {aqprice_r['rate_min']:.1f}% |\n\n")
 
     # ---- 콘솔 출력 ----
     print(f"\n  [기준선] = {threshold:.2f}")
     print(f"  {'지표':<26} | {'AQRERM':>12} | {'AQPRICE':>12} | {'개선':>15}")
     print(f"  {'-'*26}-+-{'-'*12}-+-{'-'*12}-+-{'-'*15}")
-    print(f"  {'기준선 도달 시간 (tick)':<26} | {str(aqrerm_m['conv_tick']):>12} | {str(aqprice_m['conv_tick']):>12} | {conv_disp:>15}")
+    print("  [알고리즘별]")
     print(f"  {'정착 ADT 중앙값':<26} | {aqrerm_m['ss']['median']:>12.2f} | {aqprice_m['ss']['median']:>12.2f} | {ss_imp:>+14.1f}%")
     print(f"  {'누적 ADT':<26} | {aqrerm_m['auc']:>12.0f} | {aqprice_m['auc']:>12.0f} | {auc_imp:>+14.1f}%")
     print(f"  {'최악 ADT (구간 최댓값)':<26} | {aqrerm_m['worst']:>12.2f} | {aqprice_m['worst']:>12.2f} | {worst_imp:>+14.1f}%")
     print(f"  {'정착 후 상위 5% 지연':<26} | {aqrerm_m['p95']:>12.2f} | {aqprice_m['p95']:>12.2f} | {p95_imp:>+14.1f}%")
     print(f"  {'랜덤시드 간 변동성':<26} | {aqrerm_m['ss']['cv']:>12.3f} | {aqprice_m['ss']['cv']:>12.3f} | {cv_factor:>13.1f}×")
     print(f"  {'결정당 에코 이웃 수':<26} | {aqrerm_m['echo_cost']:>12.2f} | {aqprice_m['echo_cost']:>12.2f} | {echo_imp:>+14.1f}%")
+    print("  [AQPRICE 기준]")
+    print(f"  {'기준선 도달 시간 (tick)':<26} | {str(aqrerm_m['conv_tick']):>12} | {str(aqprice_m['conv_tick']):>12} | {conv_disp:>15}")
 
 
 # -------------------------------------------------------------------------
@@ -305,6 +329,28 @@ def run_all():
         md.write(f'- BASE_PARAMS: {BASE_PARAMS}\n')
         md.write(f'- TOTAL_TICKS: {TOTAL_TICKS}, STAT_INTERVAL: {STAT_INTERVAL}\n')
         md.write(f'- Convergence threshold = AQPRICE SS median × {CONVERGENCE_THRESHOLD_RATIO}\n\n')
+
+        md.write('## 지표 설명\n\n')
+        md.write('- [알고리즘별] 지표는 각 알고리즘이 자기 자신의 곡선으로 독립 계산한다. '
+                 '[AQPRICE 기준] 지표(기준선 도달 시간)만 AQPRICE 정착 ADT 중앙값보다 20% 높은 값(× 1.2)을 공통 판정선으로 쓴다.\n\n')
+        md.write('- [알고리즘별] 정착 ADT 중앙값 (SS ADT median) : '
+                 '학습이 끝난 뒤쪽 절반 구간의 평균 전달시간을 시드별로 낸 뒤 시드 간 중앙값. 작을수록 정착 성능이 빠름.\n')
+        md.write('- [알고리즘별] 정착 ADT 중간 50% 범위 (IQR) : '
+                 '시드별 정착 ADT 의 25~75% 구간. 시드 간 퍼짐 정도.\n')
+        md.write('- [알고리즘별] 누적 ADT (AUC) : '
+                 '실행 전체 구간 ADT 합의 시드 간 중앙값. 과도기 비용과 정착 수준을 함께 반영. 작을수록 좋음.\n')
+        md.write('- [알고리즘별] 최악 ADT (worst spike) : '
+                 '실행 중 가장 높았던 구간 ADT(최댓값)의 시드 간 중앙값. 최악 순간의 심각도.\n')
+        md.write('- [알고리즘별] 정착 후 상위 5% 지연 (P95) : '
+                 '정착 구간 ADT 의 95퍼센타일. 단발 이상치를 뺀 통상적 고지연 수준.\n')
+        md.write('- [알고리즘별] 랜덤시드 간 변동성 (CV) : '
+                 '정착 ADT 의 시드 간 (표준편차 ÷ 평균). 작을수록 난수 조건과 무관하게 일관적.\n')
+        md.write('- [알고리즘별] 결정당 에코 이웃 수 (echo cost) : '
+                 '라우팅 결정 1회당 이웃에게 조회한 평균 횟수. 통신 오버헤드(성능 대 비용).\n')
+        md.write('- [AQPRICE 기준] 기준선 도달 시간 (convergence time) : '
+                 'ADT 가 공통 기준선(AQPRICE 정착 ADT 중앙값보다 20% 높은 값, × 1.2)을 안정적으로 하회한 tick. 작을수록 빨리 도달.\n\n')
+        md.write('- 패킷 전달 통계 : 생성/전달/미전달은 시드 평균 패킷 수. '
+                 '성공률은 전달/생성(시드 평균), 최고/최저는 시드 중 최대/최소 성공률(붕괴 확인용).\n\n')
 
         for ax, exp in zip(axes, EXPERIMENTS):
             run_lambda(ax, exp['lam'], exp['total_ticks'], md)
