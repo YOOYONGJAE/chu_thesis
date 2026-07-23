@@ -265,6 +265,10 @@ class Node:
         # (AQRERM 은 그대로 self.params['L'] 을 읽어 라우트 메모리 유지)
         L     = self.params.get('aqprice_L', 0)
         c_q   = self.params['c']
+        # 요청 노드 제외 토글 — 이웃이 최소 Q 를 낼 때 질문자(self)를 뺄지 여부.
+        # 기본 True(제외 = 기존 동작, AQRERM 라우트 메모리에서 온 조건).
+        # ablation 스크립트가 aqprice_exclude_requester=False 로 두면 Q-routing/AQFE 처럼 질문자도 포함.
+        exclude_req = self.id if self.params.get('aqprice_exclude_requester', True) else None
 
         self.update_T_est()
 
@@ -291,7 +295,7 @@ class Node:
             self.pfe_window_full_echo_count += 1
 
             # 1차: 모든 이웃의 fresh t_n + queue 수집
-            t_values = {n: all_nodes[n].best_estimate(dst, exclude_node=self.id)
+            t_values = {n: all_nodes[n].best_estimate(dst, exclude_node=exclude_req)
                         for n in self.neighbors}
             self.echo_query_count += len(self.neighbors)  # Full Echo: 모든 이웃 조회
             for n in self.neighbors:
@@ -325,7 +329,7 @@ class Node:
                 key=lambda n: self.Q[dst][n] + c_q * self.last_known_queue[n]
             )
             # y_star 만 update
-            t = all_nodes[y_star].best_estimate(dst, exclude_node=self.id)
+            t = all_nodes[y_star].best_estimate(dst, exclude_node=exclude_req)
             self.echo_query_count += 1  # 포인트 부족(Q-routing 모드): y_star 하나만 조회
             self.last_known_queue[y_star] = len(all_nodes[y_star].queue)
             self.Q[dst][y_star] += eta * (
