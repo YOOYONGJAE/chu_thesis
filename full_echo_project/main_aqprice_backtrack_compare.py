@@ -5,8 +5,8 @@
 #   L1  : L=1, 요청노드 제외 (aqprice_L=1, exclude=True)        → 라우트 메모리로 직전 노드 방지
 # - node.py 의 aqprice_L / aqprice_exclude_requester 두 토글을 변형별로 조합
 # - 6x6 grid, 10 시드, λ=2/3.5/3.8 (20000 tick). 지표표 + 그래프 생산
-# - 기준선 = exc(현재 기본) 정착 ADT 중앙값보다 20% 높은 값 (× 1.2, 세 변형 공통)
-# - 산출물: result_compare_AQPRICE_backtrack.md / .png
+# - 5 지표: 앞/뒤 절반 평균 ADT / 최악 ADT / CV / 결정당 에코 이웃 수 (정착 구간 = 뒤 절반)
+# - 산출물: result_aqprice_backtrack_compare.md / .png
 # =============================================================================
 import random
 import numpy as np
@@ -59,15 +59,14 @@ SEEDS = list(range(100, 1001, 100))   # 10 개 시드
 STAT_INTERVAL = 100
 TOTAL_TICKS = 20000
 
-CONVERGENCE_THRESHOLD_RATIO = 1.2
 
-MD_PATH  = 'result_compare_AQPRICE_backtrack.md'
-PNG_PATH = 'result_compare_AQPRICE_backtrack.png'
+MD_PATH  = 'result_aqprice_backtrack_compare.md'
+PNG_PATH = 'result_aqprice_backtrack_compare.png'
 
 EXPERIMENTS = [
-    {'lam': 2, 'total_ticks': TOTAL_TICKS, 'title': 'λ=2.0'},
-    {'lam': 3.5, 'total_ticks': TOTAL_TICKS, 'title': 'λ=3.5'},
-    {'lam': 3.8, 'total_ticks': TOTAL_TICKS, 'title': 'λ=3.8'},
+    {'lam': 2, 'total_ticks': TOTAL_TICKS},
+    {'lam': 3.5, 'total_ticks': TOTAL_TICKS},
+    {'lam': 3.8, 'total_ticks': TOTAL_TICKS},
 ]
 
 
@@ -85,47 +84,22 @@ def run_one(variant, lam, total_ticks, seed):
 
 
 # -------------------------------------------------------------------------
-# Metric 계산 함수들 (main_aqrerm_vs_aqprice 와 동일)
+# Metric 계산 함수 — 5 지표 (앞/뒤 절반 평균 ADT / 최악 ADT / CV)
+# - 정착 구간은 실행 시간을 정확히 반으로 나눈 뒤 절반으로 정의 (임의 tick 아님)
 # -------------------------------------------------------------------------
-def compute_target_reach_time(median_series, threshold, x_axis, min_fraction=0.95):
-    median_series = np.asarray(median_series)
-    n = len(median_series)
-    for i in range(n):
-        rest = median_series[i:]
-        if np.mean(rest <= threshold) >= min_fraction:
-            return x_axis[i]
-    return None
-
-
-def compute_auc(adt_arr):
-    per_seed_auc = np.nansum(adt_arr, axis=1)
-    return float(np.nanmedian(per_seed_auc)), per_seed_auc
-
-
-def compute_worst_spike(adt_arr):
+def compute_metrics(adt_arr):
+    """앞/뒤 절반 평균 ADT, 최악 ADT, CV 를 계산해 dict 로 반환."""
+    half = adt_arr.shape[1] // 2
+    front_ps = np.nanmean(adt_arr[:, :half], axis=1)
+    back_ps  = np.nanmean(adt_arr[:, half:], axis=1)
     per_seed_max = np.nanmax(adt_arr, axis=1)
-    return float(np.nanmedian(per_seed_max)), per_seed_max
-
-
-def compute_late_p95(adt_arr):
-    half = adt_arr.shape[1] // 2
-    per_seed_p95 = np.nanpercentile(adt_arr[:, half:], 95, axis=1)
-    return float(np.nanmedian(per_seed_p95)), per_seed_p95
-
-
-def compute_ss_metrics(adt_arr):
-    half = adt_arr.shape[1] // 2
-    ss_per_seed = np.nanmean(adt_arr[:, half:], axis=1)
+    back_mean = np.nanmean(back_ps)
+    cv = float(np.nanstd(back_ps) / back_mean) if back_mean > 0 else 0.0
     return {
-        'per_seed': ss_per_seed,
-        'median': float(np.nanmedian(ss_per_seed)),
-        'mean':   float(np.nanmean(ss_per_seed)),
-        'std':    float(np.nanstd(ss_per_seed)),
-        'cv':     float(np.nanstd(ss_per_seed) / np.nanmean(ss_per_seed)) if np.nanmean(ss_per_seed) > 0 else 0.0,
-        'q25':    float(np.nanpercentile(ss_per_seed, 25)),
-        'q75':    float(np.nanpercentile(ss_per_seed, 75)),
-        'min':    float(np.nanmin(ss_per_seed)),
-        'max':    float(np.nanmax(ss_per_seed)),
+        'front': float(np.nanmedian(front_ps)),
+        'back':  float(np.nanmedian(back_ps)),
+        'worst': float(np.nanmedian(per_seed_max)),
+        'cv':    cv,
     }
 
 
@@ -171,27 +145,12 @@ def run_lambda(ax, lam, total_ticks, md):
             'rate_min':  float(np.min(rates)),
         }
 
-    # ---- 기준선 = REF(exc) 정착 ADT 중앙값 × 1.2 ----
-    ref_ss = compute_ss_metrics(results[REF_KEY]['adt_arr'])
-    threshold = ref_ss['median'] * CONVERGENCE_THRESHOLD_RATIO
-
+    # ---- 변형별 지표 계산 (5 지표) ----
     metrics = {}
     for variant in VARIANTS:
-        adt_arr = results[variant]['adt_arr']
-        median_series = results[variant]['median']
-        ss = compute_ss_metrics(adt_arr)
-        auc_median, _ = compute_auc(adt_arr)
-        worst_median, _ = compute_worst_spike(adt_arr)
-        p95_median, _ = compute_late_p95(adt_arr)
-        conv_tick = compute_target_reach_time(median_series, threshold, x_axis)
-        metrics[variant] = {
-            'ss':        ss,
-            'auc':       auc_median,
-            'worst':     worst_median,
-            'p95':       p95_median,
-            'conv_tick': conv_tick,
-            'echo_cost': results[variant]['echo_cost'],
-        }
+        m = compute_metrics(results[variant]['adt_arr'])
+        m['echo_cost'] = results[variant]['echo_cost']
+        metrics[variant] = m
 
     # ---- 시각화 : median 실선 + IQR 오차 막대 ----
     spacing = max(1, len(x_axis) // 10)
@@ -205,14 +164,6 @@ def run_lambda(ax, lam, total_ticks, md):
                     capsize=3, elinewidth=1.2, capthick=1.2,
                     label=LABELS[variant], color=COLORS[variant], linewidth=2.0)
 
-    ax.axhline(y=threshold, color='gray', linestyle='--', linewidth=1.2,
-               label=f'reference = exc steady ADT x {CONVERGENCE_THRESHOLD_RATIO} ({threshold:.2f})')
-    for variant in VARIANTS:
-        conv_tick = metrics[variant]['conv_tick']
-        if conv_tick is not None:
-            ax.axvline(x=conv_tick, color=COLORS[variant], linestyle=':',
-                       linewidth=1.5, alpha=0.7)
-
     ax.set_title(f"λ={lam}", fontsize=16)
     ax.set_xlabel('Simulator Time', fontsize=14)
     ax.set_ylabel('Average Delivery Time', fontsize=14)
@@ -220,7 +171,7 @@ def run_lambda(ax, lam, total_ticks, md):
     ax.legend(loc='upper right', fontsize=12)
     ax.grid(True, alpha=0.3)
 
-    # ---- MD 표 (변형별 열, 원값) ----
+    # ---- MD 표 (변형별 열, 원값. 5 지표) ----
     cols = " | ".join(LABELS_SHORT[v] for v in VARIANTS)
     align = "|---" + "|---:" * len(VARIANTS) + "|\n"
 
@@ -229,23 +180,12 @@ def run_lambda(ax, lam, total_ticks, md):
 
     md.write(f"| 지표 | {cols} |\n")
     md.write(align)
-    md.write(row("[변형별] 정착 ADT 중앙값 (SS ADT median)",
-                 lambda v: f"{metrics[v]['ss']['median']:.2f}"))
-    md.write(row("[변형별] 정착 ADT 중간 50% 범위 (IQR)",
-                 lambda v: f"[{metrics[v]['ss']['q25']:.2f}, {metrics[v]['ss']['q75']:.2f}]"))
-    md.write(row("[변형별] 누적 ADT (AUC)",
-                 lambda v: f"{metrics[v]['auc']:.0f}"))
-    md.write(row("[변형별] 최악 ADT (worst spike, 구간 최댓값)",
-                 lambda v: f"{metrics[v]['worst']:.2f}"))
-    md.write(row("[변형별] 정착 후 상위 5% 지연 (P95)",
-                 lambda v: f"{metrics[v]['p95']:.2f}"))
-    md.write(row("[변형별] 랜덤시드 간 변동성 (CV, 작을수록 일관적)",
-                 lambda v: f"{metrics[v]['ss']['cv']:.3f}"))
-    md.write(row("[변형별] 결정당 에코 이웃 수 (echo cost)",
-                 lambda v: f"{metrics[v]['echo_cost']:.2f}"))
-    md.write(row("[기준] 기준선 도달 시간 (convergence time, tick)",
-                 lambda v: f"{metrics[v]['conv_tick']}"))
-    md.write(f"* 기준선 : L0 제외(현재) 정착 ADT 중앙값보다 20% 높은 값 (× {CONVERGENCE_THRESHOLD_RATIO})\n\n")
+    md.write(row("앞 절반 평균 ADT (학습 과도기)", lambda v: f"{metrics[v]['front']:.2f}"))
+    md.write(row("뒤 절반 평균 ADT (정착 후)",   lambda v: f"{metrics[v]['back']:.2f}"))
+    md.write(row("최악 ADT (구간 최댓값)",       lambda v: f"{metrics[v]['worst']:.2f}"))
+    md.write(row("랜덤시드 간 변동성 (CV)",      lambda v: f"{metrics[v]['cv']:.3f}"))
+    md.write(row("결정당 에코 이웃 수",          lambda v: f"{metrics[v]['echo_cost']:.2f}"))
+    md.write("\n")
 
     # ---- MD 패킷 전달 통계 ----
     md.write(f"#### 패킷 전달 통계 ({len(SEEDS)} 시드)\n\n")
@@ -260,21 +200,18 @@ def run_lambda(ax, lam, total_ticks, md):
     md.write("\n")
 
     # ---- 콘솔 출력 ----
-    print(f"\n  [기준선] = {threshold:.2f}")
     head = " | ".join(f"{LABELS_SHORT[v]:>14}" for v in VARIANTS)
-    print(f"  {'지표':<26} | {head}")
+    print(f"  {'지표':<24} | {head}")
 
     def prow(name, fmt):
         vals = " | ".join(f"{fmt(v):>14}" for v in VARIANTS)
-        print(f"  {name:<26} | {vals}")
+        print(f"  {name:<24} | {vals}")
 
-    prow("정착 ADT 중앙값",      lambda v: f"{metrics[v]['ss']['median']:.2f}")
-    prow("누적 ADT",             lambda v: f"{metrics[v]['auc']:.0f}")
+    prow("앞 절반 평균 ADT", lambda v: f"{metrics[v]['front']:.2f}")
+    prow("뒤 절반 평균 ADT", lambda v: f"{metrics[v]['back']:.2f}")
     prow("최악 ADT (구간 최댓값)", lambda v: f"{metrics[v]['worst']:.2f}")
-    prow("정착 후 상위 5% 지연",  lambda v: f"{metrics[v]['p95']:.2f}")
-    prow("랜덤시드 간 변동성",    lambda v: f"{metrics[v]['ss']['cv']:.3f}")
-    prow("결정당 에코 이웃 수",   lambda v: f"{metrics[v]['echo_cost']:.2f}")
-    prow("기준선 도달 시간",      lambda v: f"{metrics[v]['conv_tick']}")
+    prow("랜덤시드 간 변동성", lambda v: f"{metrics[v]['cv']:.3f}")
+    prow("결정당 에코 이웃 수", lambda v: f"{metrics[v]['echo_cost']:.2f}")
 
 
 # -------------------------------------------------------------------------
@@ -300,15 +237,14 @@ def run_all():
             md.write(f"  - {v} : L={cfg['aqprice_L']}, 요청노드 제외={cfg['aqprice_exclude_requester']}\n")
         md.write(f'- TOTAL_TICKS: {TOTAL_TICKS}, STAT_INTERVAL: {STAT_INTERVAL}\n\n')
 
-        md.write('## 지표 설명\n\n')
+        md.write('## 지표 설명 (5 지표)\n\n')
         md.write('- 세 변형은 "패킷이 방금 온 곳으로 되돌아가는 것" 을 막는 방식이 다르다.\n')
         md.write('  inc(L0 포함) : 아무 방지 없음. exc(L0 제외/현재) : 이웃이 최소 Q 낼 때 질문자를 뺌(추정값 단계).\n')
         md.write('  L1 : 라우트 메모리로 직전 노드를 다음 홉 후보에서 뺌(선택 단계). L1 은 요청노드 제외도 유지.\n\n')
-        md.write('- 표 값은 모두 시드 집계 원값(개선 열 없음). 기준은 exc(현재)로, 기준선 도달 시간만 exc 정착 ADT × 1.2 를 공통 판정선으로 쓴다.\n')
-        md.write('- 정착 ADT 중앙값 : 뒤쪽 절반 평균의 시드 간 중앙값(작을수록 좋음). '
-                 '누적 ADT : 전체 구간 합의 중앙값. 최악 ADT : 구간 최댓값의 중앙값. '
-                 'P95 : 정착 구간 95퍼센타일. CV : 정착 ADT 의 시드 간 표준편차/평균(작을수록 일관적). '
-                 '에코 이웃 수 : 결정당 이웃 조회 평균. 기준선 도달 시간 : 공통 기준선을 안정적으로 하회한 tick.\n\n')
+        md.write('- 표 값은 모두 시드 집계 원값(개선 열 없음). 정착 구간은 실행 시간의 뒤 절반으로 정의 (임의 tick 아님).\n')
+        md.write('- 앞 절반 평균 ADT (학습 과도기) / 뒤 절반 평균 ADT (정착 후) : 각 시드 절반 구간 평균 ADT 의 시드 간 중앙값.\n')
+        md.write('- 최악 ADT : 각 시드 구간 최댓값의 중앙값. CV : 뒤 절반 평균 ADT 의 시드 간 표준편차/평균(작을수록 일관적). '
+                 '에코 이웃 수 : 결정당 이웃 조회 평균.\n\n')
 
         for ax, exp in zip(axes, EXPERIMENTS):
             run_lambda(ax, exp['lam'], exp['total_ticks'], md)

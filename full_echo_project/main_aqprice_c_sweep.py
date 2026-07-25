@@ -2,7 +2,7 @@
 # [요약] AQPRICE 단독 — 큐 페널티 계수 c 의 효과 측정 (c-sweep)
 # - 6x6 grid, 단일 시드 100, λ=2/3/3.5 (14000 tick)
 # - C_VALUES 를 바꿔가며 ADT 곡선 비교 → c 항 유무/크기가 성능에 주는 영향 확인
-# - 산출물: result_aqprice_ctest_6by6.md / .png
+# - 산출물: result_aqprice_c_sweep.md / .png
 # =============================================================================
 import random
 import numpy as np
@@ -37,13 +37,13 @@ C_VALUES = [0, 0.3]
 C_COLORS = plt.cm.viridis(np.linspace(0, 1, len(C_VALUES)))
 
 STAT_INTERVAL = 100
-MD_PATH = 'result_aqprice_ctest_6by6.md'
+MD_PATH = 'result_aqprice_c_sweep.md'
 
 EXPERIMENTS = [
-    # {'lam': 1, 'total_ticks': 14000, 'title': 'λ=1'},
-    {'lam': 2, 'total_ticks': 14000, 'title': 'λ=2'},
-    {'lam': 3, 'total_ticks': 14000, 'title': 'λ=3'},
-    {'lam': 3.5, 'total_ticks': 14000, 'title': 'λ=3.5'},
+    # {'lam': 1, 'total_ticks': 14000},
+    {'lam': 2, 'total_ticks': 14000},
+    {'lam': 3, 'total_ticks': 14000},
+    {'lam': 3.5, 'total_ticks': 14000},
 ]
 
 
@@ -120,14 +120,14 @@ def run_all():
                 ax.plot(x_axis, adt, label=label, color=color, linestyle=':')
 
             md.write("\n")
-            ax.set_title(exp['title'])
+            ax.set_title(f"λ={lam}")
             ax.set_xlabel('Simulator Time')
             ax.set_ylabel('Average Delivery Time')
             ax.legend(loc='best', fontsize=9)
             ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    filename = 'result_aqprice_ctest_6by6.png'
+    filename = 'result_aqprice_c_sweep.png'
     plt.savefig(filename, dpi=150)
     print(f"\n결과 저장: {filename}")
     plt.close()

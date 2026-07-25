@@ -1,17 +1,12 @@
 # =============================================================================
-# [요약] 발표용 최종 지표 비교 — AQRERM vs AQPRICE 정량 지표 요약표
-# - 6x6 grid, 10 시드, λ=2/3.5 (20000 tick). 그래프가 아니라 지표표 생산이 목적
+# [요약] AQRERM vs AQPRICE 정량 지표 비교
+# - 6x6 grid, 10 시드. 핵심 지표 3개 + 패킷 전달 통계
 # - 지표:
-# ① AQPRICE 기준선 도달 시간 (ADT 가 기준선을 안정적으로 하회한 tick)
-# ② 정착 ADT 중앙값 (뒤쪽 절반 평균의 시드 간 중앙값)
-# ③ 정착 ADT 중간 50% 범위 (시드 간 25~75% 구간)
-# ④ 누적 ADT (시드별 시계열 합의 시드 간 중앙값)
-# ⑤ 최악 ADT (구간 최댓값의 시드 간 중앙값)
-# ⑥ 정착 후 상위 5% 지연 (뒤쪽 절반 95퍼센타일의 시드 간 중앙값)
-# ⑦ 랜덤시드 간 변동성 (정착 ADT 의 시드 간 표준편차 / 평균)
-# ⑧ 결정당 에코 이웃 수 (이웃 조회 총횟수 / 라우팅 결정 총횟수)
-# - 기준선 = AQPRICE 정착 ADT 중앙값보다 20% 높은 값 (× 1.2, 양 알고리즘에 공통 적용)
-# - 산출물: result_compare_AQPRICE_final.md / .png
+# ① 앞 절반 평균 ADT (학습 과도기 성능) — 각 시드 앞 절반 평균의 시드 간 중앙값
+# ② 뒤 절반 평균 ADT (정착 후 성능) — 각 시드 뒤 절반 평균의 시드 간 중앙값
+# ③ 결정당 에코 이웃 수 (이웃 조회 총횟수 / 라우팅 결정 총횟수, 성능 대 비용)
+# - 정착 구간은 '실행 시간의 뒤 절반' 으로 정의 (임의 tick 지정 아님)
+# - 산출물: result_aqrerm_vs_aqprice.md / .png
 # =============================================================================
 import random
 import numpy as np
@@ -29,7 +24,8 @@ from topology_grid import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACEN
 ETA = 0.9
 K   = 0.5
 L   = 3
-C   = 0.22
+# C   = 0.22
+C   = 0
 BASE_PARAMS = {'eta': ETA, 'k': K, 'L': L, 'c': C}
 
 TOPOLOGY_GRID = {'num_nodes': GRID_NUM_NODES, 'adjacency': GRID_ADJACENCY}
@@ -49,16 +45,14 @@ SEEDS = list(range(100, 1001, 100))   # 10 개 시드
 STAT_INTERVAL = 100
 TOTAL_TICKS = 20000
 
-# threshold 비율 (수렴 시간 정의에 사용)
-CONVERGENCE_THRESHOLD_RATIO = 1.2
-
-MD_PATH  = 'result_compare_AQPRICE_final.md'
-PNG_PATH = 'result_compare_AQPRICE_final.png'
+MD_PATH  = 'result_aqrerm_vs_aqprice.md'
+PNG_PATH = 'result_aqrerm_vs_aqprice.png'
 
 EXPERIMENTS = [
-    {'lam': 2, 'total_ticks': TOTAL_TICKS, 'title': 'λ=2.0'},
-    {'lam': 3.5, 'total_ticks': TOTAL_TICKS, 'title': 'λ=3.5'},
-    {'lam': 3.8, 'total_ticks': TOTAL_TICKS, 'title': 'λ=3.8'},
+    # {'lam': 2, 'total_ticks': TOTAL_TICKS},
+    {'lam': 3, 'total_ticks': TOTAL_TICKS},
+    # {'lam': 3.5, 'total_ticks': TOTAL_TICKS},
+    {'lam': 3.8, 'total_ticks': TOTAL_TICKS},
 ]
 
 
@@ -75,62 +69,16 @@ def run_one(algo, lam, total_ticks, seed):
 
 # -------------------------------------------------------------------------
 # Metric 계산 함수들
+# - 정착 구간의 임의성 논란을 피하기 위해 실행 시간을 정확히 반으로 나눔
+# - 앞 절반 평균 ADT = 학습 과도기 성능, 뒤 절반 평균 ADT = 정착 후 성능
 # -------------------------------------------------------------------------
-def compute_target_reach_time(median_series, threshold, x_axis, min_fraction=0.95):
-    """median ADT 시계열이 기준선(threshold) 아래로 '안정적으로' 유지되기 시작한 tick 반환.
-    조건: 그 시점 이후의 윈도우 중 min_fraction (기본 95%) 이상이 threshold 이하.
-    못 도달하면 None.
-
-    단순히 '처음으로 threshold 아래로 내려간 tick' 을 쓰면 첫 윈도우의 인위적 낮은
-    ADT 값 (가까운 거리 패킷 1~2 개만 배달되어 평균이 작음) 에 속을 수 있어서
-    '이후 95% 가 안정적으로 유지' 조건으로 보완.
-    """
-    median_series = np.asarray(median_series)
-    n = len(median_series)
-    for i in range(n):
-        rest = median_series[i:]
-        if np.mean(rest <= threshold) >= min_fraction:
-            return x_axis[i]
-    return None
-
-
-def compute_auc(adt_arr):
-    """시드별 ADT 시계열의 합 → 시드 간 median 반환."""
-    # 전달 0 구간(NaN)은 제외하고 합/집계 (nan 무시 계열)
-    per_seed_auc = np.nansum(adt_arr, axis=1)
-    return float(np.nanmedian(per_seed_auc)), per_seed_auc
-
-
-def compute_worst_spike(adt_arr):
-    """시드별 max ADT → 시드 간 median 반환 (최악 ADT, 구간 최댓값)."""
-    per_seed_max = np.nanmax(adt_arr, axis=1)
-    return float(np.nanmedian(per_seed_max)), per_seed_max
-
-
-def compute_late_p95(adt_arr):
-    """각 시드의 뒤쪽 절반 구간 95퍼센타일 → 시드 간 median 반환 (정착 후 상위 5% 지연).
-    최댓값 하나에 휘둘리는 최악 ADT 와 달리, 단발 이상치를 걸러낸 통상적 고지연 수준."""
+def compute_half_adt(adt_arr):
+    """실행을 앞/뒤 절반으로 나눠 각 시드의 평균 ADT 를 낸 뒤 시드 간 중앙값 반환.
+    (front, back) 두 값. 앞 절반=학습 과도기, 뒤 절반=정착 후."""
     half = adt_arr.shape[1] // 2
-    per_seed_p95 = np.nanpercentile(adt_arr[:, half:], 95, axis=1)
-    return float(np.nanmedian(per_seed_p95)), per_seed_p95
-
-
-def compute_ss_metrics(adt_arr):
-    """SS ADT (뒷쪽 절반 평균) per seed → median / mean / std / CV / IQR / range."""
-    # NaN 구간을 제외하고 집계 (nan 무시 계열)
-    half = adt_arr.shape[1] // 2
-    ss_per_seed = np.nanmean(adt_arr[:, half:], axis=1)
-    return {
-        'per_seed': ss_per_seed,
-        'median': float(np.nanmedian(ss_per_seed)),
-        'mean':   float(np.nanmean(ss_per_seed)),
-        'std':    float(np.nanstd(ss_per_seed)),
-        'cv':     float(np.nanstd(ss_per_seed) / np.nanmean(ss_per_seed)) if np.nanmean(ss_per_seed) > 0 else 0.0,
-        'q25':    float(np.nanpercentile(ss_per_seed, 25)),
-        'q75':    float(np.nanpercentile(ss_per_seed, 75)),
-        'min':    float(np.nanmin(ss_per_seed)),
-        'max':    float(np.nanmax(ss_per_seed)),
-    }
+    front_per_seed = np.nanmean(adt_arr[:, :half], axis=1)
+    back_per_seed  = np.nanmean(adt_arr[:, half:], axis=1)
+    return float(np.nanmedian(front_per_seed)), float(np.nanmedian(back_per_seed))
 
 
 def pct_improvement(baseline, new):
@@ -186,38 +134,20 @@ def run_lambda(ax, lam, total_ticks, md):
             'rate_min':  float(np.min(rates)),
         }
 
-    # ---- threshold = AQPRICE 의 SS median × 1.2 ----
-    aqprice_ss = compute_ss_metrics(results['aqprice']['adt_arr'])
-    threshold = aqprice_ss['median'] * CONVERGENCE_THRESHOLD_RATIO
-
-    # ---- 알고리즘별 지표 계산 ----
+    # ---- 알고리즘별 지표 계산 (앞/뒤 절반 평균 ADT + 에코 비용) ----
     metrics = {}
     for algo in ALGORITHMS:
-        adt_arr = results[algo]['adt_arr']
-        median_series = results[algo]['median']
-        ss = compute_ss_metrics(adt_arr)
-        auc_median, _ = compute_auc(adt_arr)
-        worst_median, _ = compute_worst_spike(adt_arr)
-        p95_median, _ = compute_late_p95(adt_arr)
-        conv_tick = compute_target_reach_time(median_series, threshold, x_axis)
+        front, back = compute_half_adt(results[algo]['adt_arr'])
         metrics[algo] = {
-            'ss':         ss,
-            'auc':        auc_median,
-            'worst':      worst_median,
-            'p95':        p95_median,
-            'conv_tick':  conv_tick,
+            'front':      front,           # 앞 절반 평균 ADT (학습 과도기)
+            'back':       back,            # 뒤 절반 평균 ADT (정착 후)
             'echo_cost':  results[algo]['echo_cost'],
         }
 
-    # ---- 시각화 : median 실선 + IQR 오차 막대 (일정 간격 세로선) ----
-    # spacing : 전체 윈도우 수를 10등분 → 알고리즘당 막대 약 10개
-    #           (200 윈도우 기준 20 윈도우 = 2000 tick 간격)
-    # offset  : 알고리즘마다 시작점을 spacing/알고리즘수 만큼 어긋내서
-    #           서로 다른 알고리즘의 막대가 같은 x 위치에 겹치지 않게 함
+    # ---- 시각화 : median 실선 + IQR 오차 막대 ----
     spacing = max(1, len(x_axis) // 10)
     for idx, algo in enumerate(ALGORITHMS):
         median = results[algo]['median']
-        # yerr 는 (아래 길이, 위 길이) 두 행 — median 기준 비대칭 IQR 범위
         yerr = np.vstack([median - results[algo]['q25'],
                           results[algo]['q75'] - median])
         offset = idx * spacing // len(ALGORITHMS)
@@ -226,41 +156,6 @@ def run_lambda(ax, lam, total_ticks, md):
                     capsize=3, elinewidth=1.2, capthick=1.2,
                     label=LABELS[algo], color=COLORS[algo], linewidth=2.0)
 
-    # ---- 기준선 수평선 (그래프 텍스트는 Hangul tofu 방지 위해 ASCII 유지) ----
-    ax.axhline(y=threshold, color='gray', linestyle='--', linewidth=1.2,
-               label=f'reference = AQPRICE steady ADT x {CONVERGENCE_THRESHOLD_RATIO} ({threshold:.2f})')
-
-    # ---- 알고리즘별 기준선 도달 시점 vertical line ----
-    for algo in ALGORITHMS:
-        conv_tick = metrics[algo]['conv_tick']
-        if conv_tick is not None:
-            ax.axvline(x=conv_tick, color=COLORS[algo], linestyle=':',
-                       linewidth=1.5, alpha=0.7)
-            ax.annotate(f'{LABELS[algo]}\nreach: {conv_tick}',
-                        xy=(conv_tick, threshold),
-                        xytext=(conv_tick + total_ticks * 0.01, threshold * 1.5),
-                        fontsize=12, color=COLORS[algo])
-
-    # ---- 텍스트 박스 (핵심 지표. 그래프 안이라 ASCII 라벨 유지) ----
-    aqrerm_m = metrics['aqrerm']
-    aqprice_m  = metrics['aqprice']
-
-    # 기준선 도달 시간 비교 (None 처리) — 표/콘솔용 개선 문자열
-    if aqrerm_m['conv_tick'] is not None and aqprice_m['conv_tick'] is not None:
-        speedup = aqrerm_m['conv_tick'] / aqprice_m['conv_tick']
-        conv_disp = f"{speedup:.1f}x faster"
-    else:
-        conv_disp = "N/A"
-
-    ss_imp    = pct_improvement(aqrerm_m['ss']['median'],   aqprice_m['ss']['median'])
-    auc_imp   = pct_improvement(aqrerm_m['auc'],            aqprice_m['auc'])
-    worst_imp = pct_improvement(aqrerm_m['worst'],          aqprice_m['worst'])
-    p95_imp   = pct_improvement(aqrerm_m['p95'],            aqprice_m['p95'])
-    echo_imp  = pct_improvement(aqrerm_m['echo_cost'],      aqprice_m['echo_cost'])
-    cv_factor = aqrerm_m['ss']['cv'] / aqprice_m['ss']['cv'] if aqprice_m['ss']['cv'] > 0 else float('inf')
-
-    # 수치는 그래프에 그리지 않고 MD 파일로만 출력 (아래 MD 로그 블록).
-    # 범례를 (수치 박스가 있던) 우상단으로 옮기고 글씨를 키움.
     ax.set_title(f"λ={lam}", fontsize=16)
     ax.set_xlabel('Simulator Time', fontsize=14)
     ax.set_ylabel('Average Delivery Time', fontsize=14)
@@ -268,22 +163,20 @@ def run_lambda(ax, lam, total_ticks, md):
     ax.legend(loc='upper right', fontsize=13)
     ax.grid(True, alpha=0.3)
 
-    # ---- MD 로그 ----
+    aqrerm_m  = metrics['aqrerm']
+    aqprice_m = metrics['aqprice']
+    front_imp = pct_improvement(aqrerm_m['front'],     aqprice_m['front'])
+    back_imp  = pct_improvement(aqrerm_m['back'],      aqprice_m['back'])
+    echo_imp  = pct_improvement(aqrerm_m['echo_cost'], aqprice_m['echo_cost'])
+
+    # ---- MD 로그 (핵심 지표 3개) ----
     md.write("| 지표 | AQRERM | AQPRICE | 개선 |\n")
     md.write("|---|---:|---:|---:|\n")
-    md.write(f"| [알고리즘별] 정착 ADT 중앙값 (SS ADT median) | {aqrerm_m['ss']['median']:.2f} | {aqprice_m['ss']['median']:.2f} | {ss_imp:+.1f}% |\n")
-    md.write(f"| [알고리즘별] 정착 ADT 중간 50% 범위 (IQR) | [{aqrerm_m['ss']['q25']:.2f}, {aqrerm_m['ss']['q75']:.2f}] | "
-             f"[{aqprice_m['ss']['q25']:.2f}, {aqprice_m['ss']['q75']:.2f}] | - |\n")
-    md.write(f"| [알고리즘별] 누적 ADT (AUC) | {aqrerm_m['auc']:.0f} | {aqprice_m['auc']:.0f} | {auc_imp:+.1f}% |\n")
-    md.write(f"| [알고리즘별] 최악 ADT (worst spike, 구간 최댓값) | {aqrerm_m['worst']:.2f} | {aqprice_m['worst']:.2f} | {worst_imp:+.1f}% |\n")
-    md.write(f"| [알고리즘별] 정착 후 상위 5% 지연 (P95) | {aqrerm_m['p95']:.2f} | {aqprice_m['p95']:.2f} | {p95_imp:+.1f}% |\n")
-    md.write(f"| [알고리즘별] 랜덤시드 간 변동성 (CV, 작을수록 일관적) | {aqrerm_m['ss']['cv']:.3f} | {aqprice_m['ss']['cv']:.3f} | "
-             f"{cv_factor:.1f}× |\n")
-    md.write(f"| [알고리즘별] 결정당 에코 이웃 수 (echo cost) | {aqrerm_m['echo_cost']:.2f} | {aqprice_m['echo_cost']:.2f} | {echo_imp:+.1f}% |\n")
-    md.write(f"| [AQPRICE 기준] 기준선 도달 시간 (convergence time, tick) | {aqrerm_m['conv_tick']} | {aqprice_m['conv_tick']} | {conv_disp} |\n")
-    md.write(f"* 기준선 : AQPRICE 정착 ADT 중앙값보다 20% 높은 값 (× {CONVERGENCE_THRESHOLD_RATIO})\n\n")
+    md.write(f"| 앞 절반 평균 ADT (학습 과도기) | {aqrerm_m['front']:.2f} | {aqprice_m['front']:.2f} | {front_imp:+.1f}% |\n")
+    md.write(f"| 뒤 절반 평균 ADT (정착 후) | {aqrerm_m['back']:.2f} | {aqprice_m['back']:.2f} | {back_imp:+.1f}% |\n")
+    md.write(f"| 결정당 에코 이웃 수 | {aqrerm_m['echo_cost']:.2f} | {aqprice_m['echo_cost']:.2f} | {echo_imp:+.1f}% |\n\n")
 
-    # ---- MD: 전달 통계 (시드 집계 요약) ----
+    # ---- MD: 패킷 전달 통계 ----
     aqrerm_r  = results['aqrerm']
     aqprice_r = results['aqprice']
     md.write(f"#### 패킷 전달 통계 ({len(SEEDS)} 시드)\n\n")
@@ -297,18 +190,11 @@ def run_lambda(ax, lam, total_ticks, md):
     md.write(f"| 성공률 최저 | {aqrerm_r['rate_min']:.1f}% | {aqprice_r['rate_min']:.1f}% |\n\n")
 
     # ---- 콘솔 출력 ----
-    print(f"\n  [기준선] = {threshold:.2f}")
-    print(f"  {'지표':<26} | {'AQRERM':>12} | {'AQPRICE':>12} | {'개선':>15}")
-    print(f"  {'-'*26}-+-{'-'*12}-+-{'-'*12}-+-{'-'*15}")
-    print("  [알고리즘별]")
-    print(f"  {'정착 ADT 중앙값':<26} | {aqrerm_m['ss']['median']:>12.2f} | {aqprice_m['ss']['median']:>12.2f} | {ss_imp:>+14.1f}%")
-    print(f"  {'누적 ADT':<26} | {aqrerm_m['auc']:>12.0f} | {aqprice_m['auc']:>12.0f} | {auc_imp:>+14.1f}%")
-    print(f"  {'최악 ADT (구간 최댓값)':<26} | {aqrerm_m['worst']:>12.2f} | {aqprice_m['worst']:>12.2f} | {worst_imp:>+14.1f}%")
-    print(f"  {'정착 후 상위 5% 지연':<26} | {aqrerm_m['p95']:>12.2f} | {aqprice_m['p95']:>12.2f} | {p95_imp:>+14.1f}%")
-    print(f"  {'랜덤시드 간 변동성':<26} | {aqrerm_m['ss']['cv']:>12.3f} | {aqprice_m['ss']['cv']:>12.3f} | {cv_factor:>13.1f}×")
-    print(f"  {'결정당 에코 이웃 수':<26} | {aqrerm_m['echo_cost']:>12.2f} | {aqprice_m['echo_cost']:>12.2f} | {echo_imp:>+14.1f}%")
-    print("  [AQPRICE 기준]")
-    print(f"  {'기준선 도달 시간 (tick)':<26} | {str(aqrerm_m['conv_tick']):>12} | {str(aqprice_m['conv_tick']):>12} | {conv_disp:>15}")
+    print(f"  {'지표':<24} | {'AQRERM':>12} | {'AQPRICE':>12} | {'개선':>12}")
+    print(f"  {'-'*24}-+-{'-'*12}-+-{'-'*12}-+-{'-'*12}")
+    print(f"  {'앞 절반 평균 ADT':<24} | {aqrerm_m['front']:>12.2f} | {aqprice_m['front']:>12.2f} | {front_imp:>+11.1f}%")
+    print(f"  {'뒤 절반 평균 ADT':<24} | {aqrerm_m['back']:>12.2f} | {aqprice_m['back']:>12.2f} | {back_imp:>+11.1f}%")
+    print(f"  {'결정당 에코 이웃 수':<24} | {aqrerm_m['echo_cost']:>12.2f} | {aqprice_m['echo_cost']:>12.2f} | {echo_imp:>+11.1f}%")
 
 
 # -------------------------------------------------------------------------
@@ -329,28 +215,13 @@ def run_all():
         md.write(f'- Seeds: {SEEDS}\n')
         md.write(f'- Algorithms: {[LABELS[a] for a in ALGORITHMS]}\n')
         md.write(f'- BASE_PARAMS: {BASE_PARAMS}\n')
-        md.write(f'- TOTAL_TICKS: {TOTAL_TICKS}, STAT_INTERVAL: {STAT_INTERVAL}\n')
-        md.write(f'- Convergence threshold = AQPRICE SS median × {CONVERGENCE_THRESHOLD_RATIO}\n\n')
+        md.write(f'- TOTAL_TICKS: {TOTAL_TICKS}, STAT_INTERVAL: {STAT_INTERVAL}\n\n')
 
         md.write('## 지표 설명\n\n')
-        md.write('- [알고리즘별] 지표는 각 알고리즘이 자기 자신의 곡선으로 독립 계산한다. '
-                 '[AQPRICE 기준] 지표(기준선 도달 시간)만 AQPRICE 정착 ADT 중앙값보다 20% 높은 값(× 1.2)을 공통 판정선으로 쓴다.\n\n')
-        md.write('- [알고리즘별] 정착 ADT 중앙값 (SS ADT median) : '
-                 '학습이 끝난 뒤쪽 절반 구간의 평균 전달시간을 시드별로 낸 뒤 시드 간 중앙값. 작을수록 정착 성능이 빠름.\n')
-        md.write('- [알고리즘별] 정착 ADT 중간 50% 범위 (IQR) : '
-                 '시드별 정착 ADT 의 25~75% 구간. 시드 간 퍼짐 정도.\n')
-        md.write('- [알고리즘별] 누적 ADT (AUC) : '
-                 '실행 전체 구간 ADT 합의 시드 간 중앙값. 과도기 비용과 정착 수준을 함께 반영. 작을수록 좋음.\n')
-        md.write('- [알고리즘별] 최악 ADT (worst spike) : '
-                 '실행 중 가장 높았던 구간 ADT(최댓값)의 시드 간 중앙값. 최악 순간의 심각도.\n')
-        md.write('- [알고리즘별] 정착 후 상위 5% 지연 (P95) : '
-                 '정착 구간 ADT 의 95퍼센타일. 단발 이상치를 뺀 통상적 고지연 수준.\n')
-        md.write('- [알고리즘별] 랜덤시드 간 변동성 (CV) : '
-                 '정착 ADT 의 시드 간 (표준편차 ÷ 평균). 작을수록 난수 조건과 무관하게 일관적.\n')
-        md.write('- [알고리즘별] 결정당 에코 이웃 수 (echo cost) : '
-                 '라우팅 결정 1회당 이웃에게 조회한 평균 횟수. 통신 오버헤드(성능 대 비용).\n')
-        md.write('- [AQPRICE 기준] 기준선 도달 시간 (convergence time) : '
-                 'ADT 가 공통 기준선(AQPRICE 정착 ADT 중앙값보다 20% 높은 값, × 1.2)을 안정적으로 하회한 tick. 작을수록 빨리 도달.\n\n')
+        md.write('- 정착 구간은 실행 시간을 정확히 반으로 나눈 뒤 절반으로 정의한다 (임의 tick 지정 아님).\n')
+        md.write('- 앞 절반 평균 ADT (학습 과도기) : 각 시드의 앞 절반 구간 평균 전달시간의 시드 간 중앙값. 작을수록 빨리 좋아짐.\n')
+        md.write('- 뒤 절반 평균 ADT (정착 후) : 각 시드의 뒤 절반 구간 평균 전달시간의 시드 간 중앙값. 작을수록 정착 성능이 좋음.\n')
+        md.write('- 결정당 에코 이웃 수 : 라우팅 결정 1회당 이웃에게 조회한 평균 횟수. 통신 오버헤드(성능 대 비용).\n')
         md.write('- 패킷 전달 통계 : 생성/전달/미전달은 시드 평균 패킷 수. '
                  '성공률은 전달/생성(시드 평균), 최고/최저는 시드 중 최대/최소 성공률(붕괴 확인용).\n\n')
 

@@ -3,7 +3,7 @@
 # - 6x6 grid, 10 시드 sweep, λ 별 ADT median + IQR 그래프 + markdown 결과표
 # - ALGORITHMS 주석 토글로 원하는 조합만 실행 가능
 # - 구세대 변형 포함 버전은 legacy_algorithm_files/main_compare_PFE.py 참조
-# - 산출물: result_compare_AQPRICE.md / .png
+# - 산출물: result_lineage.md / .png
 # =============================================================================
 import random
 import numpy as np
@@ -57,16 +57,16 @@ COLORS = {
 SEEDS = list(range(100, 1001, 100))  # [100, 200, ..., 1000]
 
 STAT_INTERVAL = 100
-MD_PATH = 'result_compare_AQPRICE.md'
+MD_PATH = 'result_lineage.md'
 
 EXPERIMENTS = [
-    # {'lam': 2, 'total_ticks': 40000, 'title': 'λ=2'},
-    # {'lam': 3, 'total_ticks': 40000, 'title': 'λ=3'},
-    {'lam': 3.5, 'total_ticks': 40000, 'title': 'λ=3.5'},
-    {'lam': 3.7, 'total_ticks': 40000, 'title': 'λ=3.7'},
-    {'lam': 3.8, 'total_ticks': 40000, 'title': 'λ=3.8'},
-    # {'lam': 3.9, 'total_ticks': 40000, 'title': 'λ=3.9'},
-    # {'lam': 4.0, 'total_ticks': 40000, 'title': 'λ=4.0'},
+    # {'lam': 2, 'total_ticks': 40000},
+    # {'lam': 3, 'total_ticks': 40000},
+    {'lam': 3.5, 'total_ticks': 40000},
+    {'lam': 3.7, 'total_ticks': 40000},
+    {'lam': 3.8, 'total_ticks': 40000},
+    # {'lam': 3.9, 'total_ticks': 40000},
+    # {'lam': 4.0, 'total_ticks': 40000},
 ]
 
 
@@ -146,31 +146,25 @@ def run_all():
                             capsize=3, elinewidth=1.2, capthick=1.2,
                             label=label, color=color, linewidth=2.0)
 
-                # ---- steady-state 요약 (마지막 절반 평균 → 시드별로 → median/IQR) ----
-                # 여기도 NaN 구간을 제외하고 집계 (nan 무시 계열)
+                # ---- 앞/뒤 절반 평균 ADT 요약 (각 시드 평균 → 시드 간 중앙값) ----
+                # 정착 구간은 실행 시간을 정확히 반으로 나눈 뒤 절반으로 정의 (임의 tick 아님)
                 half = adt_arr.shape[1] // 2
-                ss_per_seed = np.nanmean(adt_arr[:, half:], axis=1)
-                ss_median = float(np.nanmedian(ss_per_seed))
-                ss_q25 = float(np.nanpercentile(ss_per_seed, 25))
-                ss_q75 = float(np.nanpercentile(ss_per_seed, 75))
-                ss_min  = float(np.nanmin(ss_per_seed))
-                ss_max  = float(np.nanmax(ss_per_seed))
-                print(f"    [SS ADT] median={ss_median:6.2f}  "
-                      f"IQR=[{ss_q25:6.2f}, {ss_q75:6.2f}]  "
-                      f"range=[{ss_min:6.2f}, {ss_max:6.2f}]")
-                md.write(f"\n**Steady-state ADT (last half mean per seed)** "
-                         f"median={ss_median:.2f}  "
-                         f"IQR=[{ss_q25:.2f}, {ss_q75:.2f}]  "
-                         f"range=[{ss_min:.2f}, {ss_max:.2f}]\n\n")
+                front_per_seed = np.nanmean(adt_arr[:, :half], axis=1)
+                back_per_seed  = np.nanmean(adt_arr[:, half:], axis=1)
+                front_adt = float(np.nanmedian(front_per_seed))
+                back_adt  = float(np.nanmedian(back_per_seed))
+                print(f"    [ADT] 앞절반={front_adt:6.2f}  뒤절반={back_adt:6.2f}")
+                md.write(f"\n- 앞 절반 평균 ADT (학습 과도기) : {front_adt:.2f}\n")
+                md.write(f"- 뒤 절반 평균 ADT (정착 후) : {back_adt:.2f}\n\n")
 
-            ax.set_title(exp['title'])
+            ax.set_title(f"λ={lam}")
             ax.set_xlabel('Simulator Time')
             ax.set_ylabel('Average Delivery Time')
             ax.legend(loc='best', fontsize=10)
             ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    filename = 'result_compare_AQPRICE.png'
+    filename = 'result_lineage.png'
     plt.savefig(filename, dpi=150)
     print(f"\n결과 저장: {filename}")
     plt.close()

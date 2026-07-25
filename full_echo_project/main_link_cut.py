@@ -14,7 +14,7 @@
 # [요약] 링크 절단 회복력 비교 — 4종 알고리즘, tick 4000 에서 링크 절단
 # - 6x6 grid, 10 시드, 시나리오 2개: top bridge (14,15) / bottom bridge (2,3) 절단
 # - Pre-cut / Post-cut ADT 를 분리 집계 → 토폴로지 변화 적응력 측정
-# - 산출물: result_compare_AQPRICE_link_cut.md / .png
+# - 산출물: result_link_cut.md / .png
 # =============================================================================
 import random
 import numpy as np
@@ -62,7 +62,7 @@ COLORS = {
 SEEDS = list(range(100, 1001, 100))  # [100, 200, ..., 1000]
 
 STAT_INTERVAL = 100
-MD_PATH = 'result_compare_AQPRICE_link_cut.md'
+MD_PATH = 'result_link_cut.md'
 
 # -------------------------------------------------------------------------
 # 링크 절단 시나리오 (main_link_cut.py 기반)
@@ -173,10 +173,10 @@ def run_all():
                     print(f"    [SS post] median={float(np.nanmedian(ss_post)):6.2f}  "
                           f"IQR=[{float(np.nanpercentile(ss_post, 25)):6.2f}, "
                           f"{float(np.nanpercentile(ss_post, 75)):6.2f}]")
-                    md.write(f"\n**Pre-cut ADT** median={float(np.nanmedian(ss_pre)):.2f}  "
+                    md.write(f"\n- Pre-cut ADT median={float(np.nanmedian(ss_pre)):.2f}  "
                              f"IQR=[{float(np.nanpercentile(ss_pre, 25)):.2f}, "
-                             f"{float(np.nanpercentile(ss_pre, 75)):.2f}]  \n")
-                    md.write(f"**Post-cut ADT** median={float(np.nanmedian(ss_post)):.2f}  "
+                             f"{float(np.nanpercentile(ss_pre, 75)):.2f}]\n")
+                    md.write(f"- Post-cut ADT median={float(np.nanmedian(ss_post)):.2f}  "
                              f"IQR=[{float(np.nanpercentile(ss_post, 25)):.2f}, "
                              f"{float(np.nanpercentile(ss_post, 75)):.2f}]\n\n")
 
@@ -189,7 +189,7 @@ def run_all():
                 ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    filename = 'result_compare_AQPRICE_link_cut.png'
+    filename = 'result_link_cut.png'
     plt.savefig(filename, dpi=150)
     print(f"\n결과 저장: {filename}")
     plt.close()

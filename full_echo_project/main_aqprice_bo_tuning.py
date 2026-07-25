@@ -70,8 +70,8 @@ SPACE = [
 # -------------------------------------------------------------------------
 # 출력 파일
 # -------------------------------------------------------------------------
-PNG_PATH = 'result_compare_AQPRICE_p_params.png'
-MD_PATH  = 'result_compare_AQPRICE_p_params.md'
+PNG_PATH = 'result_aqprice_bo_tuning.png'
+MD_PATH  = 'result_aqprice_bo_tuning.md'
 
 
 # -------------------------------------------------------------------------

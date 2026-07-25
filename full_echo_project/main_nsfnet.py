@@ -2,7 +2,7 @@
 # [요약] NSFNET 토폴로지 일반화 검증 — AQRERM vs AQPRICE 비교
 # - 6x6 grid 가 아닌 실제 백본망 (NSFNET) 에서 10 시드, λ 별 ADT median + IQR 비교
 # - "grid 특화 아님" 을 보이는 일반화 증거 생산 (main_compare_AQPRICE 의 NSFNET 판)
-# - 산출물: result_compare_AQPRICE_nsfnet.md / .png
+# - 산출물: result_nsfnet.md / .png
 # =============================================================================
 import random
 import numpy as np
@@ -13,6 +13,7 @@ plt.rcParams['font.family'] = 'Malgun Gothic'   # Windows 한글 폰트 (그래�
 plt.rcParams['axes.unicode_minus'] = False       # 마이너스 기호 깨짐 방지
 from simulator import Simulator
 from topology_nsfnet import NUM_NODES as NSFNET_NUM_NODES, ADJACENCY as NSFNET_ADJACENCY
+# from topology_pq import NUM_NODES as NSFNET_NUM_NODES, ADJACENCY as NSFNET_ADJACENCY
 
 # -------------------------------------------------------------------------
 # 파라미터 설정
@@ -20,7 +21,8 @@ from topology_nsfnet import NUM_NODES as NSFNET_NUM_NODES, ADJACENCY as NSFNET_A
 ETA = 0.9
 K   = 0.5
 L   = 3
-C   = 0.22   # aqprice 의 큐 페널티 가중치 (다른 알고리즘은 이 키를 안 읽음)
+# C   = 0.22   # aqprice 의 큐 페널티 가중치 (다른 알고리즘은 이 키를 안 읽음)
+C   = 0   # aqprice 의 큐 페널티 가중치 (다른 알고리즘은 이 키를 안 읽음)
 BASE_PARAMS = {'eta': ETA, 'k': K, 'L': L, 'c': C}
 
 TOPOLOGY_NSFNET = {'num_nodes': NSFNET_NUM_NODES, 'adjacency': NSFNET_ADJACENCY}
@@ -42,7 +44,7 @@ LABELS = {
 COLORS = {
     'q_routing': '#117733',  # 진녹 (baseline 최단순)
     'aqfe':      '#44AA99',  # teal (AQRERM 의 부모)
-    'aqrerm':    '#CC79A7',  # 분홍보라 (baseline)
+    'aqrerm':    "#FF0000",  # 분홍보라 (baseline)
     'aqprice':    '#56B4E9',  # 하늘색 (제안 기법)
 }
 
@@ -50,17 +52,17 @@ COLORS = {
 SEEDS = list(range(100, 1001, 100))  # [100, 200, ..., 1000]
 
 STAT_INTERVAL = 100
-MD_PATH = 'result_compare_AQPRICE_nsfnet.md'
+MD_PATH = 'result_nsfnet.md'
 
 EXPERIMENTS = [
-    # {'lam': 1, 'total_ticks': 14000, 'title': 'λ=1'},
-    # {'lam': 2, 'total_ticks': 40000, 'title': 'λ=2'},
-    # {'lam': 3, 'total_ticks': 40000, 'title': 'λ=3'},
-    # {'lam': 3.5, 'total_ticks': 40000, 'title': 'λ=3.5'},
-    # {'lam': 3.7, 'total_ticks': 40000, 'title': 'λ=3.7'},
-    {'lam': 3.8, 'total_ticks': 40000, 'title': 'λ=3.8'},
-    {'lam': 3.9, 'total_ticks': 40000, 'title': 'λ=3.9'},
-    {'lam': 4.0, 'total_ticks': 40000, 'title': 'λ=4.0'},
+    # {'lam': 1, 'total_ticks': 14000},
+    # {'lam': 2, 'total_ticks': 40000},
+    {'lam': 3, 'total_ticks': 20000},
+    # {'lam': 3.5, 'total_ticks': 20000},
+    # {'lam': 3.7, 'total_ticks': 20000},
+    {'lam': 3.8, 'total_ticks': 20000},
+    # {'lam': 3.9, 'total_ticks': 40000},
+    # {'lam': 4.0, 'total_ticks': 20000},
 ]
 
 
@@ -143,28 +145,22 @@ def run_all():
                 # ---- steady-state 요약 (마지막 절반 평균 → 시드별로 → median/IQR) ----
                 # 여기도 NaN 구간을 제외하고 집계 (nan 무시 계열)
                 half = adt_arr.shape[1] // 2
-                ss_per_seed = np.nanmean(adt_arr[:, half:], axis=1)
-                ss_median = float(np.nanmedian(ss_per_seed))
-                ss_q25 = float(np.nanpercentile(ss_per_seed, 25))
-                ss_q75 = float(np.nanpercentile(ss_per_seed, 75))
-                ss_min  = float(np.nanmin(ss_per_seed))
-                ss_max  = float(np.nanmax(ss_per_seed))
-                print(f"    [SS ADT] median={ss_median:6.2f}  "
-                      f"IQR=[{ss_q25:6.2f}, {ss_q75:6.2f}]  "
-                      f"range=[{ss_min:6.2f}, {ss_max:6.2f}]")
-                md.write(f"\n**Steady-state ADT (last half mean per seed)** "
-                         f"median={ss_median:.2f}  "
-                         f"IQR=[{ss_q25:.2f}, {ss_q75:.2f}]  "
-                         f"range=[{ss_min:.2f}, {ss_max:.2f}]\n\n")
+                front_per_seed = np.nanmean(adt_arr[:, :half], axis=1)
+                back_per_seed  = np.nanmean(adt_arr[:, half:], axis=1)
+                front_adt = float(np.nanmedian(front_per_seed))
+                back_adt  = float(np.nanmedian(back_per_seed))
+                print(f"    [ADT] 앞절반={front_adt:6.2f}  뒤절반={back_adt:6.2f}")
+                md.write(f"\n- 앞 절반 평균 ADT (학습 과도기) : {front_adt:.2f}\n")
+                md.write(f"- 뒤 절반 평균 ADT (정착 후) : {back_adt:.2f}\n\n")
 
-            ax.set_title(exp['title'])
+            ax.set_title(f"λ={lam}")
             ax.set_xlabel('Simulator Time')
             ax.set_ylabel('Average Delivery Time')
             ax.legend(loc='best', fontsize=10)
             ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    filename = 'result_compare_AQPRICE_nsfnet.png'
+    filename = 'result_nsfnet.png'
     plt.savefig(filename, dpi=150)
     print(f"\n결과 저장: {filename}")
     plt.close()

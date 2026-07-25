@@ -206,7 +206,15 @@ class Node:
         if not candidates:
             candidates = self.neighbors
 
-        y_star = min(candidates, key=lambda n: self.Q[dst][n])
+        # AQRERM 큐 페널티 토글 — c 효과 비교 실험용.
+        # aqrerm_c > 0 이면 선택식에 이웃 큐 길이를 페널티로 더함 (AQPRICE 의 c 와 동일 개념).
+        # 기본 0 → 순수 Q 선택 (기존 AQRERM 동작 그대로).
+        aqrerm_c = self.params.get('aqrerm_c', 0.0)
+        if aqrerm_c > 0:
+            y_star = min(candidates,
+                         key=lambda n: self.Q[dst][n] + aqrerm_c * len(all_nodes[n].queue))
+        else:
+            y_star = min(candidates, key=lambda n: self.Q[dst][n])
         q = current_tick - packet.queue_entry_tick
         s = 1
 
