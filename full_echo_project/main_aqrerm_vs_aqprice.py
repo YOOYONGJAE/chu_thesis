@@ -24,11 +24,16 @@ from topology_grid import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACEN
 ETA = 0.9
 K   = 0.5
 L   = 3
-# C   = 0.22
-C   = 0
+C   = 0.22
+# C   = 0
 BASE_PARAMS = {'eta': ETA, 'k': K, 'L': L, 'c': C}
 
 TOPOLOGY_GRID = {'num_nodes': GRID_NUM_NODES, 'adjacency': GRID_ADJACENCY}
+
+
+def topo_name(n):
+    """노드 수로 토폴로지 이름 자동 판별 (import 만 바꾸면 제목도 자동 반영)."""
+    return {36: '6x6 Grid', 14: 'NSFNET', 15: 'PQ'}.get(n, f'{n}-node')
 
 # 비교 대상 2 개
 ALGORITHMS = ['aqrerm', 'aqprice']
@@ -205,8 +210,8 @@ def run_all():
     axes = axes.flatten()
     active_labels = ' vs '.join(LABELS[a] for a in ALGORITHMS)
     fig.suptitle(
-        f"6x6 Grid — Final comparison : {active_labels}  "
-        f"(seeds={SEEDS[0]}~{SEEDS[-1]}, n={len(SEEDS)})",
+        f"{topo_name(GRID_NUM_NODES)} — {active_labels}  "
+        f"(c={C}, seeds n={len(SEEDS)}, {TOTAL_TICKS}tick)",
         fontsize=17,
     )
 

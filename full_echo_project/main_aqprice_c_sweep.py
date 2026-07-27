@@ -18,6 +18,11 @@ SEED = 100
 
 TOPOLOGY_GRID = {'num_nodes': GRID_NUM_NODES, 'adjacency': GRID_ADJACENCY}
 
+
+def topo_name(n):
+    """노드 수로 토폴로지 이름 자동 판별 (import 만 바꾸면 제목도 자동 반영)."""
+    return {36: '6x6 Grid', 14: 'NSFNET', 15: 'PQ'}.get(n, f'{n}-node')
+
 # -------------------------------------------------------------------------
 # 파라미터 설정 (AQRERM 논문 기준)
 # -------------------------------------------------------------------------
@@ -53,7 +58,7 @@ EXPERIMENTS = [
 def run_all():
     fig, axes = plt.subplots(1, len(EXPERIMENTS), figsize=(30, 8), squeeze=False)
     axes = axes.flatten()  # EXPERIMENTS 가 1 개여도 1D 배열로 유지
-    fig.suptitle(f"6x6 Grid — aqprice c-sweep (L={L})")
+    fig.suptitle(f"{topo_name(GRID_NUM_NODES)} — aqprice c-sweep (L={L}, seed={SEED})")
 
     with open(MD_PATH, 'w', encoding='utf-8') as md:
         md.write('# 6x6 Grid AQPRICE c-sweep\n\n')

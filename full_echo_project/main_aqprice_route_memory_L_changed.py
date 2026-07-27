@@ -16,7 +16,8 @@ import matplotlib.pyplot as plt
 plt.rcParams['font.family'] = 'Malgun Gothic'   # Windows 한글 폰트 (그래프 한글 깨짐 방지)
 plt.rcParams['axes.unicode_minus'] = False       # 마이너스 기호 깨짐 방지
 from simulator import Simulator
-from topology_grid import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACENCY
+# from topology_grid import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACENCY
+from topology_nsfnet import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACENCY
 
 # -------------------------------------------------------------------------
 # 파라미터 (aqprice_L 만 변형별로 덮어씀)
@@ -28,6 +29,11 @@ C   = 0.22
 BASE_PARAMS = {'eta': ETA, 'k': K, 'L': L, 'c': C}
 
 TOPOLOGY_GRID = {'num_nodes': GRID_NUM_NODES, 'adjacency': GRID_ADJACENCY}
+
+def topo_name(n):
+    """노드 수로 토폴로지 이름 자동 판별 (import 만 바꾸면 제목도 자동 반영)."""
+    return {36: '6x6 Grid', 14: 'NSFNET', 15: 'PQ'}.get(n, f'{n}-node')
+
 
 # -------------------------------------------------------------------------
 # 4 변형: 같은 aqprice, 라우트 메모리 길이만 다름 (요청노드 제외는 모두 기본 True 유지)
@@ -56,6 +62,9 @@ PNG_PATH = 'result_aqprice_route_memory_L_changed.png'
 
 # λ=3.8 만, 20000 tick
 EXPERIMENTS = [
+    # {'lam': 2.5, 'total_ticks': 20000},
+    # {'lam': 3.0, 'total_ticks': 20000},
+    # {'lam': 3.5, 'total_ticks': 20000},
     {'lam': 3.8, 'total_ticks': 20000},
     {'lam': 4.0, 'total_ticks': 20000},
     {'lam': 4.4, 'total_ticks': 20000},
@@ -215,8 +224,8 @@ def run_all():
     fig, axes = plt.subplots(1, len(EXPERIMENTS), figsize=(20 * len(EXPERIMENTS), 12), squeeze=False)
     axes = axes.flatten()
     fig.suptitle(
-        f"6x6 Grid — AQPRICE Route Memory 길이 비교 (L=0/1/2/3)  "
-        f"(seeds={SEEDS[0]}~{SEEDS[-1]}, n={len(SEEDS)})",
+        f"{topo_name(GRID_NUM_NODES)} — AQPRICE Route Memory 길이 비교 (L=0/1/2/3)  "
+        f"(c={C}, seeds n={len(SEEDS)})",
         fontsize=17,
     )
 

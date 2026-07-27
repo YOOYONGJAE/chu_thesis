@@ -29,6 +29,11 @@ BASE_PARAMS = {'eta': ETA, 'k': K, 'L': L, 'c': C}
 
 TOPOLOGY_GRID = {'num_nodes': GRID_NUM_NODES, 'adjacency': GRID_ADJACENCY}
 
+def topo_name(n):
+    """노드 수로 토폴로지 이름 자동 판별 (import 만 바꾸면 제목도 자동 반영)."""
+    return {36: '6x6 Grid', 14: 'NSFNET', 15: 'PQ'}.get(n, f'{n}-node')
+
+
 # -------------------------------------------------------------------------
 # 3 변형 정의: (aqprice_L, aqprice_exclude_requester)
 # -------------------------------------------------------------------------
@@ -221,8 +226,8 @@ def run_all():
     fig, axes = plt.subplots(1, len(EXPERIMENTS), figsize=(60, 12), squeeze=False)
     axes = axes.flatten()
     fig.suptitle(
-        f"6x6 Grid — AQPRICE backtrack-guard compare (L0 포함 / L0 제외 / L1)  "
-        f"(seeds={SEEDS[0]}~{SEEDS[-1]}, n={len(SEEDS)})",
+        f"{topo_name(GRID_NUM_NODES)} — AQPRICE backtrack-guard compare (L0 포함 / L0 제외 / L1)  "
+        f"(c={C}, seeds n={len(SEEDS)}, {TOTAL_TICKS}tick)",
         fontsize=17,
     )
 

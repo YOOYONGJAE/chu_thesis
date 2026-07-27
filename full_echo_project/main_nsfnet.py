@@ -21,11 +21,16 @@ from topology_nsfnet import NUM_NODES as NSFNET_NUM_NODES, ADJACENCY as NSFNET_A
 ETA = 0.9
 K   = 0.5
 L   = 3
-# C   = 0.22   # aqprice 의 큐 페널티 가중치 (다른 알고리즘은 이 키를 안 읽음)
-C   = 0   # aqprice 의 큐 페널티 가중치 (다른 알고리즘은 이 키를 안 읽음)
+C   = 0.22   # aqprice 의 큐 페널티 가중치 (다른 알고리즘은 이 키를 안 읽음)
+# C   = 0   # aqprice 의 큐 페널티 가중치 (다른 알고리즘은 이 키를 안 읽음)
 BASE_PARAMS = {'eta': ETA, 'k': K, 'L': L, 'c': C}
 
 TOPOLOGY_NSFNET = {'num_nodes': NSFNET_NUM_NODES, 'adjacency': NSFNET_ADJACENCY}
+
+def topo_name(n):
+    """노드 수로 토폴로지 이름 자동 판별 (import 만 바꾸면 제목도 자동 반영)."""
+    return {36: '6x6 Grid', 14: 'NSFNET', 15: 'PQ'}.get(n, f'{n}-node')
+
 
 # 비교 대상 알고리즘 (4종 중 필요한 것만 활성)
 ALGORITHMS = [
@@ -85,8 +90,8 @@ def run_all():
     axes = axes.flatten()  # EXPERIMENTS 가 1 개여도 1D 배열로 유지
     active_labels = ' / '.join(LABELS[a] for a in ALGORITHMS)
     fig.suptitle(
-        f"NSFNET — {active_labels} comparison "
-        f"(seeds={SEEDS[0]}~{SEEDS[-1]}, n={len(SEEDS)}, median + IQR band)"
+        f"{topo_name(NSFNET_NUM_NODES)} — {active_labels} "
+        f"(c={C}, seeds n={len(SEEDS)}, median + IQR band)"
     )
 
     with open(MD_PATH, 'w', encoding='utf-8') as md:

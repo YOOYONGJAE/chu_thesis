@@ -28,6 +28,11 @@ BASE_PARAMS = {'eta': ETA, 'k': K, 'L': L, 'c': C}
 
 TOPOLOGY_GRID = {'num_nodes': GRID_NUM_NODES, 'adjacency': GRID_ADJACENCY}
 
+def topo_name(n):
+    """노드 수로 토폴로지 이름 자동 판별 (import 만 바꾸면 제목도 자동 반영)."""
+    return {36: '6x6 Grid', 14: 'NSFNET', 15: 'PQ'}.get(n, f'{n}-node')
+
+
 # -------------------------------------------------------------------------
 # 비교 대상: 같은 aqprice, L 만 다름
 #   no_rm   : L=0 → route_memory 항상 [] → 후보 필터 없음 (라우트 메모리 미사용)
@@ -226,8 +231,8 @@ def run_all():
     axes = axes.flatten()
     active_labels = ' vs '.join(LABELS[v] for v in VARIANTS)
     fig.suptitle(
-        f"6x6 Grid — AQPRICE Route Memory ablation : {active_labels}  "
-        f"(seeds={SEEDS[0]}~{SEEDS[-1]}, n={len(SEEDS)})",
+        f"{topo_name(GRID_NUM_NODES)} — AQPRICE Route Memory ablation : {active_labels}  "
+        f"(c={C}, seeds n={len(SEEDS)}, {TOTAL_TICKS}tick)",
         fontsize=17,
     )
 
