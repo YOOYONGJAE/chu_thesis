@@ -302,21 +302,39 @@ class Node:
             self.total_point -= c_pt
             self.pfe_window_full_echo_count += 1
 
-            # 1차: 모든 이웃의 fresh t_n + queue 수집
+            # 1차: 모든 이웃의 fresh t_n 수집 (Full Echo)
             t_values = {n: all_nodes[n].best_estimate(dst, exclude_node=exclude_req)
                         for n in self.neighbors}
             self.echo_query_count += len(self.neighbors)  # Full Echo: 모든 이웃 조회
-            for n in self.neighbors:
-                self.last_known_queue[n] = len(all_nodes[n].queue)
 
-            # 2차: fresh Score = t_n + c·queue_n 으로 y_star 선정
-            def _score(n):
-                if math.isfinite(t_values[n]):
-                    return t_values[n] + c_q * self.last_known_queue[n]
-                else:
-                    return float('inf')
+            # Inline 토글 — 이번 에코로 얻은 최신 정보를 '현재 패킷 선택'에 쓸지 여부.
+            #   Inline(기본, True): 최신 t_n + 최신 큐로 선택 (AQPRICE 정식).
+            #   post-echo(False): 에코는 하되 선택에는 안 쓰고, 기존 Q + 이전 큐 캐시로 먼저 선택
+            #     (AQFE/AQRERM 처럼 '선택 먼저 → 에코는 갱신용'). 에코 정보는 다음 패킷부터 반영.
+            #   Inline 이 실제로 성능을 바꾸는지 순서만 바꿔 분리 검증하는 토글.
+            aqprice_inline = self.params.get('aqprice_inline', True)
 
-            y_star = min(candidates, key=_score)
+            if aqprice_inline:
+                # 최신 큐로 캐시 갱신 후, 그 최신값으로 선택
+                for n in self.neighbors:
+                    self.last_known_queue[n] = len(all_nodes[n].queue)
+
+                def _score(n):
+                    if math.isfinite(t_values[n]):
+                        return t_values[n] + c_q * self.last_known_queue[n]
+                    else:
+                        return float('inf')
+
+                y_star = min(candidates, key=_score)
+            else:
+                # 기존 Q + 이전 큐 캐시로 먼저 선택 (이번 에코 정보 사용 안 함)
+                y_star = min(
+                    candidates,
+                    key=lambda n: self.Q[dst][n] + c_q * self.last_known_queue[n]
+                )
+                # 선택 후 큐 캐시 갱신 (Q 갱신·다음 패킷용)
+                for n in self.neighbors:
+                    self.last_known_queue[n] = len(all_nodes[n].queue)
 
             # 3차: y_star eta, 비-y_star eta2 균등 update
             self.Q[dst][y_star] += eta * (
