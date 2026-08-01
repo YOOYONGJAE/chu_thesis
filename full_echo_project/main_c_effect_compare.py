@@ -7,7 +7,7 @@
 # - 배경: PQ(15노드) 토폴로지 고부하에서 c 가 있는 AQPRICE 가 AQRERM 보다 오히려 발산하는
 #         현상을 관찰. c(이웃 큐 혼잡 반영)가 고부하에서 역효과인지 4 변형으로 확인.
 # - node.py 의 aqrerm_c(AQRERM 큐 페널티) / c(AQPRICE 큐 페널티) 로 제어
-# - 5 지표: 앞/뒤 절반 평균 ADT / 최악 ADT / CV / 결정당 에코 이웃 수 (정착 구간 = 뒤 절반)
+# - 4 지표: 전체 평균 ADT / 전체 IQR 폭 / 결정당 에코 이웃 수 / 경로 변경률 (구간 분할 없음)
 # - 산출물: result_c_effect_compare.md / .png
 # =============================================================================
 import random
@@ -18,6 +18,7 @@ import matplotlib.pyplot as plt
 plt.rcParams['font.family'] = 'Malgun Gothic'   # Windows 한글 폰트 (그래프 한글 깨짐 방지)
 plt.rcParams['axes.unicode_minus'] = False       # 마이너스 기호 깨짐 방지
 from simulator import Simulator
+import diagnostics as diag
 # 토폴로지 선택 — import 와 TOPO_NAME 을 같이 토글 (제목이 실제 토폴로지에 맞게 나옴)
 from topology_pq import NUM_NODES as PQ_NUM_NODES, ADJACENCY as PQ_ADJACENCY
 TOPO_NAME = 'PQ 15노드'
@@ -51,7 +52,7 @@ VARIANT_CFG = {
 LABELS = {
     'aqrerm_c':    'AQRERM + c',
     'aqrerm':      'AQRERM',
-    'aqprice_noc': 'AQPRICE (c 제거)',
+    'aqprice_noc': 'AQPRICE (c removed)',
     'aqprice':     'AQPRICE',
 }
 LABELS_SHORT = {
@@ -70,9 +71,6 @@ COLORS = {
 SEEDS = list(range(100, 1001, 100))   # 10 개 시드
 STAT_INTERVAL = 100
 
-MD_PATH  = 'result_c_effect_compare.md'
-PNG_PATH = 'result_c_effect_compare.png'
-
 # 고부하 위주 (발산 현상이 나타나는 구간)
 EXPERIMENTS = [
     {'lam': 3.0, 'total_ticks': 20000},
@@ -80,6 +78,14 @@ EXPERIMENTS = [
     {'lam': 3.8, 'total_ticks': 20000},
     # {'lam': 5.0, 'total_ticks': 20000},
 ]
+
+# 파일명 태그: (토폴로지, 부하, 틱수). 토폴로지·틱수는 자동, 부하 태그는 수동.
+TOPO_TAG   = {36: 'GRID', 14: 'NSFNET', 15: 'PQ'}.get(PQ_NUM_NODES, f'{PQ_NUM_NODES}N')
+RESULT_TAG = 'HIGH'   # 부하 표기 (수동): LOW / HIGH 등
+_BASENAME  = f'result_c_effect_compare({TOPO_TAG},{RESULT_TAG},{EXPERIMENTS[0]["total_ticks"]})'
+MD_PATH       = f'{_BASENAME}.md'
+PNG_PATH      = f'{_BASENAME}.png'
+LINK_PNG_PATH = f'{_BASENAME}_linkuse.png'
 
 
 # -------------------------------------------------------------------------
@@ -97,22 +103,18 @@ def run_one(variant, lam, total_ticks, seed):
 
 
 # -------------------------------------------------------------------------
-# Metric 계산 함수 — 5 지표 (앞/뒤 절반 평균 ADT / 최악 ADT / CV)
-# - 정착 구간은 실행 시간을 정확히 반으로 나눈 뒤 절반으로 정의 (임의 tick 아님)
+# Metric 계산 함수 — 전체구간 ADT 요약 2 지표
+# - 정착 임계값을 정당화할 필요가 없도록 구간을 나누지 않고 실행 전체를 요약
+# - 표의 두 숫자는 ADT 그래프의 실선(중앙값)·띠(IQR)를 전체 구간 평균낸 값과 같다
 # -------------------------------------------------------------------------
 def compute_metrics(adt_arr):
-    """앞/뒤 절반 평균 ADT, 최악 ADT, CV 를 계산해 dict 로 반환."""
-    half = adt_arr.shape[1] // 2
-    front_ps = np.nanmean(adt_arr[:, :half], axis=1)
-    back_ps  = np.nanmean(adt_arr[:, half:], axis=1)
-    per_seed_max = np.nanmax(adt_arr, axis=1)
-    back_mean = np.nanmean(back_ps)
-    cv = float(np.nanstd(back_ps) / back_mean) if back_mean > 0 else 0.0
+    """전체 평균 ADT (중앙값 실선의 시간평균 // 단위 = 틱) + 전체 IQR 폭 (띠 평균 폭 // 단위 = 틱) 을 dict 로 반환."""
+    med  = np.nanmedian(adt_arr, axis=0)
+    band = (np.nanpercentile(adt_arr, 75, axis=0)
+            - np.nanpercentile(adt_arr, 25, axis=0))
     return {
-        'front': float(np.nanmedian(front_ps)),
-        'back':  float(np.nanmedian(back_ps)),
-        'worst': float(np.nanmedian(per_seed_max)),
-        'cv':    cv,
+        'overall':     float(np.nanmean(med)),
+        'overall_iqr': float(np.nanmean(band)),
     }
 
 
@@ -130,6 +132,9 @@ def run_lambda(ax, lam, total_ticks, md):
         print(f"\n--- {LABELS[variant]} ---")
         adt_runs = []
         echo_costs = []
+        switch_rates = []
+        rx_runs, echo_runs, switch_runs, link_dicts = [], [], [], []
+        te_runs, tm_runs = [], []          # R_x 의 분자·분모 시계열
         gens, dlvs, unds, rates = [], [], [], []
         for seed in SEEDS:
             print(f"  Running seed={seed}...")
@@ -143,13 +148,29 @@ def run_lambda(ax, lam, total_ticks, md):
             ec = (sim.total_echo_queries / sim.total_route_calls
                   if sim.total_route_calls > 0 else 0.0)
             echo_costs.append(ec)
+            sw = (sim.total_switches / sim.total_route_calls
+                  if sim.total_route_calls > 0 else 0.0)
+            switch_rates.append(sw)
+            rx_runs.append(sim.r_ratio_series)
+            te_runs.append(sim.t_est_series)
+            tm_runs.append(sim.t_max_series)
+            echo_runs.append(sim.echo_per_decision_series)
+            switch_runs.append(sim.switch_rate_series)
+            link_dicts.append(sim.link_usage)
         adt_arr = np.array(adt_runs)
         results[variant] = {
             'adt_arr':   adt_arr,
             'median':    np.nanmedian(adt_arr, axis=0),
             'q25':       np.nanpercentile(adt_arr, 25, axis=0),
             'q75':       np.nanpercentile(adt_arr, 75, axis=0),
-            'echo_cost': float(np.nanmedian(echo_costs)),
+            'echo_cost':   float(np.nanmedian(echo_costs)),
+            'switch_rate': float(np.nanmedian(switch_rates)),
+            'rx_med':     diag.median_series(rx_runs),
+            't_est_med':  diag.median_series(te_runs),
+            't_max_med':  diag.median_series(tm_runs),
+            'echo_med':   diag.median_series(echo_runs),
+            'switch_med': diag.median_series(switch_runs),
+            'link_sum':   diag.sum_link_usage(link_dicts),
             'gen_mean':  float(np.mean(gens)),
             'dlv_mean':  float(np.mean(dlvs)),
             'und_mean':  float(np.mean(unds)),
@@ -158,12 +179,8 @@ def run_lambda(ax, lam, total_ticks, md):
             'rate_min':  float(np.min(rates)),
         }
 
-    # ---- 변형별 지표 계산 (5 지표) ----
-    metrics = {}
-    for variant in VARIANTS:
-        m = compute_metrics(results[variant]['adt_arr'])
-        m['echo_cost'] = results[variant]['echo_cost']
-        metrics[variant] = m
+    # ---- 변형별 ADT 지표 (전체 평균 ADT, 전체 IQR 폭). 에코·변경률은 진단 시계열로 ----
+    metrics = {v: compute_metrics(results[v]['adt_arr']) for v in VARIANTS}
 
     # ---- 시각화 : median 실선 + IQR 오차 막대 ----
     spacing = max(1, len(x_axis) // 10)
@@ -184,7 +201,7 @@ def run_lambda(ax, lam, total_ticks, md):
     ax.legend(loc='upper right', fontsize=12)
     ax.grid(True, alpha=0.3)
 
-    # ---- MD 표 (변형별 열, 원값. 5 지표) ----
+    # ---- MD 표 (변형별 열, 원값. 4 지표) ----
     cols = " | ".join(LABELS_SHORT[v] for v in VARIANTS)
     align = "|---" + "|---:" * len(VARIANTS) + "|\n"
 
@@ -193,12 +210,28 @@ def run_lambda(ax, lam, total_ticks, md):
 
     md.write(f"| 지표 | {cols} |\n")
     md.write(align)
-    md.write(row("앞 절반 평균 ADT (학습 과도기)", lambda v: f"{metrics[v]['front']:.2f}"))
-    md.write(row("뒤 절반 평균 ADT (정착 후)",   lambda v: f"{metrics[v]['back']:.2f}"))
-    md.write(row("최악 ADT (구간 최댓값)",       lambda v: f"{metrics[v]['worst']:.2f}"))
-    md.write(row("랜덤시드 간 변동성 (CV)",      lambda v: f"{metrics[v]['cv']:.3f}"))
-    md.write(row("결정당 에코 이웃 수",          lambda v: f"{metrics[v]['echo_cost']:.2f}"))
+    md.write(row("전체 평균 ADT (중앙값 실선의 시간평균 // 단위 = 틱)", lambda v: f"{metrics[v]['overall']:.2f}"))
+    md.write(row("전체 IQR 폭 (띠 평균 폭 // 단위 = 틱)",              lambda v: f"{metrics[v]['overall_iqr']:.2f}"))
+    md.write(row("결정당 에코 이웃 수 (전체 평균 // 단위 = 개/결정)", lambda v: f"{results[v]['echo_cost']:.2f}"))
+    # 경로 변경률은 비율이라 백분율로 적는다.
+    md.write(row("경로 변경률 (전체 평균 // 단위 = %)",        lambda v: f"{results[v]['switch_rate'] * 100:.1f}%"))
+    # R_x 는 진단 시계열의 전체구간 평균 (아래 시계열 표의 '전체 평균' 과 같은 값)
+    md.write(row("R_x (전체 평균, 혼잡 신호 // 단위 없음, 0~1 비율)",
+                 lambda v: f"{diag.series_overall(results[v]['rx_med']):.3f}"))
+    # R_x 의 분자·분모. T_est 는 전체구간 평균, T_max 는 단조 증가라 최종값.
+    md.write(row("T_est (전체 평균, R_x 분자 // 단위 = 틱)",
+                 lambda v: f"{diag.series_overall(results[v]['t_est_med']):.2f}"))
+    md.write(row("T_max (최종값, R_x 분모 // 단위 = 틱)",
+                 lambda v: f"{diag.series_final(results[v]['t_max_med']):.2f}"))
     md.write("\n")
+
+    # ---- MD 진단 시계열 (변형별 구간 평균 + 전체 평균) ----
+    for variant in VARIANTS:
+        r = results[variant]
+        diag.write_diag_series_md(md, LABELS[variant],
+                                  r['rx_med'], r['echo_med'], r['switch_med'],
+                                  r['echo_cost'], r['switch_rate'],
+                                  t_est_med=r['t_est_med'], t_max_med=r['t_max_med'])
 
     # ---- MD 패킷 전달 통계 ----
     md.write(f"#### 패킷 전달 통계 ({len(SEEDS)} 시드)\n\n")
@@ -212,6 +245,12 @@ def run_lambda(ax, lam, total_ticks, md):
     md.write(row("성공률 최저",   lambda v: f"{results[v]['rate_min']:.1f}%"))
     md.write("\n")
 
+    # ---- MD 링크 사용량 수치 (변형별, 통과량 순) ----
+    for variant in VARIANTS:
+        md.write(f"#### 링크 사용량 ({LABELS[variant]}, 통과량 순, 시드 합)\n\n")
+        md.write(diag.link_usage_md(results[variant]['link_sum']))
+        md.write("\n")
+
     # ---- 콘솔 출력 ----
     head = " | ".join(f"{LABELS_SHORT[v]:>10}" for v in VARIANTS)
     print(f"  {'지표':<22} | {head}")
@@ -220,11 +259,11 @@ def run_lambda(ax, lam, total_ticks, md):
         vals = " | ".join(f"{fmt(v):>10}" for v in VARIANTS)
         print(f"  {name:<22} | {vals}")
 
-    prow("앞 절반 평균 ADT", lambda v: f"{metrics[v]['front']:.2f}")
-    prow("뒤 절반 평균 ADT", lambda v: f"{metrics[v]['back']:.2f}")
-    prow("최악 ADT", lambda v: f"{metrics[v]['worst']:.2f}")
-    prow("랜덤시드 간 변동성", lambda v: f"{metrics[v]['cv']:.3f}")
-    prow("결정당 에코 이웃 수", lambda v: f"{metrics[v]['echo_cost']:.2f}")
+    prow("전체 평균 ADT", lambda v: f"{metrics[v]['overall']:.2f}")
+    prow("전체 IQR 폭",   lambda v: f"{metrics[v]['overall_iqr']:.2f}")
+
+    # 링크 다이어그램용: 변형별 시드 합산 link_usage 반환
+    return {v: results[v]['link_sum'] for v in VARIANTS}
 
 
 # -------------------------------------------------------------------------
@@ -235,7 +274,7 @@ def run_all():
     fig, axes = plt.subplots(1, len(EXPERIMENTS), figsize=(20 * len(EXPERIMENTS), 12), squeeze=False)
     axes = axes.flatten()
     fig.suptitle(
-        f"{TOPO_NAME} — 큐 페널티 c 효과 비교 (AQRERM+c / AQRERM / AQPRICE-c / AQPRICE)  "
+        f"{TOPO_NAME} — Queue-penalty c effect compare (AQRERM+c / AQRERM / AQPRICE-c / AQPRICE)  "
         f"(seeds={SEEDS[0]}~{SEEDS[-1]}, n={len(SEEDS)})",
         fontsize=17,
     )
@@ -251,22 +290,43 @@ def run_all():
             md.write(f"  - {v} : algorithm={cfg['algorithm']}, override={cfg['params']}\n")
         md.write(f'- STAT_INTERVAL: {STAT_INTERVAL}\n\n')
 
-        md.write('## 지표 설명 (5 지표)\n\n')
+        md.write('## 출력 구성\n\n')
         md.write('- 배경 : PQ 토폴로지 고부하에서 c(이웃 큐 혼잡 반영)가 있는 AQPRICE 가 AQRERM 보다 발산하는 현상 관찰.\n')
         md.write('  c 를 AQRERM 에 붙이고(aqrerm_c) AQPRICE 에서 빼서(c=0) c 의 순효과를 4 변형으로 분리.\n')
-        md.write('- 정착 구간은 실행 시간의 뒤 절반으로 정의 (임의 tick 아님).\n')
-        md.write('- 앞 절반 평균 ADT (학습 과도기) / 뒤 절반 평균 ADT (정착 후) : 각 시드 절반 구간 평균 ADT 의 시드 간 중앙값.\n')
-        md.write('- 최악 ADT : 각 시드 구간 최댓값의 중앙값. CV : 뒤 절반 평균 ADT 의 시드 간 표준편차/평균(작을수록 일관적). '
-                 '에코 이웃 수 : 결정당 이웃 조회 평균.\n\n')
+        md.write('- 성능 비교표 : 전체 평균 ADT(그래프 중앙값 실선의 시간평균)와 전체 IQR 폭(그래프 띠의 평균 폭). 구간 분할 없이 실행 전체를 요약.\n')
+        md.write('- 진단 시계열 : R_x / 결정당 에코 이웃 수 / 경로 변경률 구간 평균 + 끝의 전체 평균(에코·변경률 요약).\n')
+        md.write('- 링크 사용량 : 별도 PNG 에 grid 링크 굵기·색(grid 만) + md 통과량 표.\n\n')
 
+        diag.write_metric_guide_md(md)
+
+        link_data = []
         for ax, exp in zip(axes, EXPERIMENTS):
-            run_lambda(ax, exp['lam'], exp['total_ticks'], md)
+            per_var = run_lambda(ax, exp['lam'], exp['total_ticks'], md)
+            link_data.append((exp['lam'], per_var))
 
     plt.tight_layout()
     plt.savefig(PNG_PATH, dpi=150)
     plt.close()
     print(f"\n결과 PNG : {PNG_PATH}")
     print(f"결과 MD  : {MD_PATH}")
+
+    # ---- 링크 사용량 다이어그램 (그리드: 행=변형, 열=부하). grid(36) 에서만 ----
+    if PQ_NUM_NODES == 36:
+        nrows, ncols = len(VARIANTS), len(link_data)
+        figL, axesL = plt.subplots(nrows, ncols, figsize=(6 * ncols, 6 * nrows), squeeze=False)
+        figL.suptitle(f"{TOPO_NAME} — link usage  [color & width = usage level]", fontsize=15)
+        vmin, vmax = diag.link_usage_range([per[v] for (lam, per) in link_data for v in per])
+        for r, variant in enumerate(VARIANTS):
+            for c, (lam, per_var) in enumerate(link_data):
+                diag.plot_link_thickness(axesL[r][c], per_var[variant],
+                                         PQ_NUM_NODES, f"{variant}  λ={lam}",
+                                         vmin=vmin, vmax=vmax)
+        diag.add_link_colorbar(figL, axesL.ravel().tolist(), vmin, vmax)
+        figL.savefig(LINK_PNG_PATH, dpi=150, bbox_inches='tight')
+        plt.close(figL)
+        print(f"결과 링크 PNG : {LINK_PNG_PATH}")
+    else:
+        print("링크 다이어그램은 grid(36) 에서만 생성 — 현재 grid 아님 (수치는 md 참조)")
 
 
 if __name__ == '__main__':

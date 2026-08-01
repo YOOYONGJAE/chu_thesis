@@ -1,201 +1,177 @@
+# =============================================================================
+# [요약] NSFNET 토폴로지 일반화 검증 — AQRERM vs AQPRICE 비교
+# - 6x6 grid 가 아닌 실제 백본망 (NSFNET) 에서 10 시드, λ 별 ADT median + IQR 비교
+# - "grid 특화 아님" 을 보이는 일반화 증거 생산 (main_compare_AQPRICE 의 NSFNET 판)
+# - 산출물: result_nsfnet.md / .png
+# =============================================================================
 import random
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')  # GUI 없이 파일로만 저장
 import matplotlib.pyplot as plt
+plt.rcParams['font.family'] = 'Malgun Gothic'   # Windows 한글 폰트 (그래프 한글 깨짐 방지)
+plt.rcParams['axes.unicode_minus'] = False       # 마이너스 기호 깨짐 방지
 from simulator import Simulator
 from topology_nsfnet import NUM_NODES as NSFNET_NUM_NODES, ADJACENCY as NSFNET_ADJACENCY
+# from topology_pq import NUM_NODES as NSFNET_NUM_NODES, ADJACENCY as NSFNET_ADJACENCY
 
-SEED = 100
+# -------------------------------------------------------------------------
+# 파라미터 설정
+# -------------------------------------------------------------------------
+ETA = 0.9
+K   = 0.5
+L   = 3
+C   = 0.22   # aqprice 의 큐 페널티 가중치 (다른 알고리즘은 이 키를 안 읽음)
+# C   = 0   # aqprice 의 큐 페널티 가중치 (다른 알고리즘은 이 키를 안 읽음)
+BASE_PARAMS = {'eta': ETA, 'k': K, 'L': L, 'c': C}
 
 TOPOLOGY_NSFNET = {'num_nodes': NSFNET_NUM_NODES, 'adjacency': NSFNET_ADJACENCY}
 
-# -------------------------------------------------------------------------
-# 파라미터 설정 (AQRERM 논문 기준)
-# -------------------------------------------------------------------------
-ETA = 0.9
-K   = 0.5           # AQRERM 논문 기준 — eta2 = k · R_x, k=0.5
-L   = 3
+def topo_name(n):
+    """노드 수로 토폴로지 이름 자동 판별 (import 만 바꾸면 제목도 자동 반영)."""
+    return {36: '6x6 Grid', 14: 'NSFNET', 15: 'PQ'}.get(n, f'{n}-node')
 
-BASE_PARAMS = {'eta': ETA, 'k': K, 'L': L}
 
+# 비교 대상 알고리즘 (4종 중 필요한 것만 활성)
 ALGORITHMS = [
-    'q_routing',
-    'aqfe',
+    # 'q_routing',
+    # 'aqfe',
     'aqrerm',
-    # 'aqrerm_c03',
-    # 'aqrerm_c',
-    # 'aqrerm_c_tdec',
-    # 'pfe',
-    # 'pfe_tdec',
-    # 'pfe_ppc',
-    # 'pfe_c03',
-    # 'aqrerm_c_ade',
-    # 'pfe_c_ade',
-    # 'pfe_c_pre_echo',
-    'pfe_c_pre_echo_tick',  # ★ 변형: 라우팅 안 해도 매 tick gr 적립 (idle 노드도 포인트 누적)
-    # 'pfe_pre_echo_tick',    # ★ 변형: 큐 항 (c · queue) 제거, 선택은 t / Q 만
-    # 'pfe_then_aqrerm',      # ★ Hybrid: switch_tick 까지 PFE_c_pre_echo_tick, 이후 AQRERM
-    ]
-LABELS = {'q_routing': 'Q-routing', 'aqfe': 'AQFE', 'aqrerm': 'AQRERM',
-          'aqrerm_c': 'AQRERM_c',
-          'aqrerm_c_tdec': 'AQRERM_c=0.5_Tdec',
-          'aqrerm_c_low_c': 'AQRERM_c=0.1',
-          'aqrerm_c03':   'AQRERM_c=0.3',
-          'aqrerm_c07':   'AQRERM_c=0.7',
-          'aqrerm_c_high_c': 'AQRERM_c=1.0',
-          'aqrerm_c05_l0': 'AQRERM_C=0.5_L=0',  # c=0.5, L=0 (memory_cut_tick 없으면 전 구간 L=0)
-          'aqrerm_c_7000_no_mem': 'AQRERM_c_7000_NO_MEM',
-          'aqrerm_c_all_no_mem': 'AQRERM_c_ALL_NO_MEM',
-          'aqrerm_c_l_train': 'AQRERM_c_L_TRAIN',
-          'aqrerm_c_l_close': 'AQRERM_c_L_CLOSE',
-          'pfe': 'PFE',
-          'pfe_tdec': 'PFE_Tdec',
-          'pfe_c':    'PFE_c=0.5',
-          'pfe_c03':  'PFE_c=0.3',
-          'aqrerm_c_ade': 'AQRERM_c=0.5_AdE',
-          'pfe_c_ade':     'PFE_c=0.5_AdE',
-          'pfe_c_pre_echo': 'PFE_c_PreEcho',
-          'pfe_c_pre_echo_tick': 'PFE_c_PreEcho_Tick',
-          'pfe_pre_echo_tick':   'PFE_PreEcho_Tick',
-          'pfe_then_aqrerm': 'Hybrid_PFE→AQRERM',
-          'learned_aqrerm': 'Learned AQRERM', 'bandit_aqrerm': 'Bandit AQRERM'}
-COLORS = {'q_routing': 'blue', 'aqfe': 'orange',
-          # === 활성화 변형: family 별 hue 분리, c 값 따라 톤 차이 ===
-          'aqrerm':         'navy',               # 기준선 — 차가운 단일색
-          'aqrerm_c':        'darkorange',         # AQRERM_c family (오렌지) — c=0.5
-          'aqrerm_c03':    'gold',               # AQRERM_c family — c=0.3 (밝은 오렌지)
-          'aqrerm_c_ade':  'green',              # AQRERM_c + AdE — family 와 구분
-          'pfe_c':          'red',                # PFE family (빨강) — c=0.5
-          'pfe_c03':        'lightcoral',         # PFE family — c=0.3 (밝은 빨강)
-          'pfe_c_ade':      'magenta',            # PFE + AdE — family 와 구분
-          'pfe_c_pre_echo': 'purple',             # PFE + Pre-echo — 보라 (magenta 와 다른 톤)
-          'pfe_c_pre_echo_tick': 'red',        # PFE + Pre-echo + tick 적립 — 같은 family, 진한 톤
-          'pfe_pre_echo_tick':   'teal',       # PFE + Pre-echo + tick 적립 + 큐 항 제거 — 청록
-          'pfe_then_aqrerm': 'darkgreen',      # Hybrid — 두 family 와 명확히 구분되는 녹색
+    'aqprice',
+]
+LABELS = {
+    'q_routing': 'Q-routing',
+    'aqfe':      'AQFE',
+    'aqrerm':    'AQRERM',
+    'aqprice':    'AQPRICE',
+}
+# 적녹색약 친화 (Wong palette)
+COLORS = {
+    'q_routing': '#117733',  # 진녹 (baseline 최단순)
+    'aqfe':      '#44AA99',  # teal (AQRERM 의 부모)
+    'aqrerm':    "#FF0000",  # 분홍보라 (baseline)
+    'aqprice':    '#56B4E9',  # 하늘색 (제안 기법)
+}
 
-          # === 비활성화 변형: 기존 매핑 유지 ===
-          'aqrerm_c_tdec':   'skyblue',
-          'aqrerm_c_low_c':  'chocolate',
-          'aqrerm_c07':    'magenta',
-          'aqrerm_c_high_c': 'darkmagenta',
-          'aqrerm_c05_l0': 'crimson',            # c=0.5 + L=0
-          'aqrerm_c_7000_no_mem': 'cyan',
-          'aqrerm_c_all_no_mem': 'teal',
-          'aqrerm_c_l_train': 'black',
-          'aqrerm_c_l_close': 'olive',
-          'pfe':            'black',
-          'pfe_tdec':       'crimson',
-          'learned_aqrerm': 'brown', 'bandit_aqrerm': 'purple'}
+# 10 개 시드 × 알고리즘 × 부하별 반복
+SEEDS = list(range(100, 1001, 100))  # [100, 200, ..., 1000]
 
-STAT_INTERVAL = 200
-
-# c-sweep 설정
-C_VALUES = [0.22]
+STAT_INTERVAL = 100
 MD_PATH = 'result_nsfnet.md'
 
 EXPERIMENTS = [
-    {'lam': 1,   'total_ticks': 40000,  'title': 'λ=1'},
-    {'lam': 2,   'total_ticks': 40000,  'title': 'λ=2'},
-    {'lam': 3,   'total_ticks': 40000, 'title': 'λ=3'},
-    {'lam': 3.5, 'total_ticks': 40000, 'title': 'λ=3.5'},
-    {'lam': 3.7, 'total_ticks': 40000, 'title': 'λ=3.7'},
-    # {'lam': 4.0, 'total_ticks': 14000, 'title': 'λ=4.0'},
+    # {'lam': 1, 'total_ticks': 14000},
+    # {'lam': 2, 'total_ticks': 40000},
+    {'lam': 3, 'total_ticks': 20000},
+    # {'lam': 3.5, 'total_ticks': 20000},
+    # {'lam': 3.7, 'total_ticks': 20000},
+    {'lam': 3.8, 'total_ticks': 20000},
+    # {'lam': 3.9, 'total_ticks': 40000},
+    # {'lam': 4.0, 'total_ticks': 20000},
 ]
 
 
 # -------------------------------------------------------------------------
-# 한 c 값에 대한 실험: 4개 부하별 ADT 그래프 + MD 로그 누적
+# 단일 (algo, lam, seed) 실행 헬퍼
 # -------------------------------------------------------------------------
-def run_one_c(c, md_file):
-    # switch_tick — pfe_then_aqrerm 전용 (다른 알고리즘은 무시).
-    # 4000 은 c=0.3, λ=3~3.5 에서 PFE/AQRERM 곡선 교차 부근 추정값.
-    params = {**BASE_PARAMS, 'c': c, 'switch_tick': 15000}
+def run_one(algo, lam, total_ticks, seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    sim = Simulator(algorithm=algo, params=BASE_PARAMS, seed=seed, topology=TOPOLOGY_NSFNET)
+    adt = sim.run(lam=lam, total_ticks=total_ticks, stat_interval=STAT_INTERVAL)
+    return sim, adt
 
-    fig, axes = plt.subplots(1, len(EXPERIMENTS), figsize=(60, 8), squeeze=False)
+
+# -------------------------------------------------------------------------
+# 메인: 각 부하별로 알고리즘들을 10 시드씩 돌려 median + IQR 시각화
+# -------------------------------------------------------------------------
+def run_all():
+    fig, axes = plt.subplots(1, len(EXPERIMENTS), figsize=(60, 10), squeeze=False)
     axes = axes.flatten()  # EXPERIMENTS 가 1 개여도 1D 배열로 유지
-    fig.suptitle(f"NSFNET (c={c}, L={L}, seed={SEED})")
+    active_labels = ' / '.join(LABELS[a] for a in ALGORITHMS)
+    fig.suptitle(
+        f"{topo_name(NSFNET_NUM_NODES)} — {active_labels} "
+        f"(c={C}, seeds n={len(SEEDS)}, median + IQR band)"
+    )
 
-    md_file.write(f"## c = {c}\n\n")
+    with open(MD_PATH, 'w', encoding='utf-8') as md:
+        md.write('# NSFNET Algorithm comparison (seed sweep)\n\n')
+        md.write(f'- Seeds: {SEEDS}\n')
+        md.write(f'- Algorithms: {[LABELS[a] for a in ALGORITHMS]}\n')
+        md.write(f'- BASE_PARAMS: {BASE_PARAMS}\n\n')
 
-    for ax, exp in zip(axes, EXPERIMENTS):
-        lam = exp['lam']
-        total_ticks = exp['total_ticks']
-        x_axis = np.arange(1, total_ticks // STAT_INTERVAL + 1) * STAT_INTERVAL
+        for ax, exp in zip(axes, EXPERIMENTS):
+            lam = exp['lam']
+            total_ticks = exp['total_ticks']
+            x_axis = np.arange(1, total_ticks // STAT_INTERVAL + 1) * STAT_INTERVAL
 
-        md_file.write(f"### λ={lam} ({total_ticks} ticks)\n\n")
-        md_file.write("| algo | generated | delivered | undelivered | delivery_rate |\n")
-        md_file.write("|------|-----------|-----------|-------------|---------------|\n")
+            md.write(f"## λ={lam} ({total_ticks} ticks)\n\n")
+            print(f"\n========== λ={lam} ==========")
 
-        print(f"\n=== c={c} λ={lam} ===")
-        for algo in ALGORITHMS:
-            random.seed(SEED)
-            np.random.seed(SEED)
-            print(f"  Running {LABELS[algo]}...")
+            for algo in ALGORITHMS:
+                label = LABELS[algo]
+                color = COLORS[algo]
+                print(f"\n--- {label} ---")
 
-            sim = Simulator(algorithm=algo, params=params, seed=SEED, topology=TOPOLOGY_NSFNET)
-            adt = sim.run(lam=lam, total_ticks=total_ticks, stat_interval=STAT_INTERVAL)
+                md.write(f"### {label}\n\n")
+                md.write("| seed | generated | delivered | undelivered | delivery_rate |\n")
+                md.write("|------|-----------|-----------|-------------|---------------|\n")
 
-            gen, dlv, und = sim.total_generated, sim.total_delivered, sim.undelivered_count
-            rate = (dlv / gen * 100) if gen > 0 else 0.0
-            print(f"    {LABELS[algo]:18s} generated={gen:6d}  delivered={dlv:6d}  "
-                  f"undelivered={und:6d}  delivery_rate={rate:5.1f}%")
-            md_file.write(f"| {LABELS[algo]} | {gen} | {dlv} | {und} | {rate:.1f}% |\n")
+                adt_runs = []
+                for seed in SEEDS:
+                    print(f"  Running seed={seed}...")
+                    sim, adt = run_one(algo, lam, total_ticks, seed)
+                    gen, dlv, und = sim.total_generated, sim.total_delivered, sim.undelivered_count
+                    rate = (dlv / gen * 100) if gen > 0 else 0.0
+                    print(f"    seed={seed:4d}  generated={gen:6d}  delivered={dlv:6d}  "
+                          f"undelivered={und:6d}  delivery_rate={rate:5.1f}%")
+                    md.write(f"| {seed} | {gen} | {dlv} | {und} | {rate:.1f}% |\n")
+                    adt_runs.append(adt)
 
-            # ---- T_est / T_max 1000-tick 간격 평균 (시간 흐름 진단) ----
-            t_est_series = getattr(sim, 't_est_series', None)
-            t_max_series = getattr(sim, 't_max_series', None)
-            if t_est_series and t_max_series:
-                n_chunks   = max(1, total_ticks // 1000)
-                chunk_size = max(1, len(t_est_series) // n_chunks)
-                t_est_chunks = [
-                    float(np.mean(t_est_series[i:i + chunk_size]))
-                    for i in range(0, chunk_size * n_chunks, chunk_size)
-                ]
-                t_max_chunks = [
-                    float(np.mean(t_max_series[i:i + chunk_size]))
-                    for i in range(0, chunk_size * n_chunks, chunk_size)
-                ]
-                print(f"      [T_est ] {' '.join(f'{m:6.2f}' for m in t_est_chunks)}   (1000-tick 평균, 네트워크 avg)")
-                print(f"      [T_max ] {' '.join(f'{m:6.2f}' for m in t_max_chunks)}   (1000-tick 평균, 네트워크 avg)")
+                # ---- 시드별 시리즈를 (n_seeds, n_windows) 배열로 쌓고 백분위수 계산 ----
+                # 전달 패킷이 0인 통계 구간은 simulator 가 NaN 을 넣으므로,
+                # 그 시드 자리만 제외하고 나머지 시드로 집계하는 nan 무시 함수를 사용
+                adt_arr = np.array(adt_runs)
+                median = np.nanmedian(adt_arr, axis=0)
+                q25 = np.nanpercentile(adt_arr, 25, axis=0)
+                q75 = np.nanpercentile(adt_arr, 75, axis=0)
 
-                # ---- PFE 진단: Full Echo 발동 비율, 평균 누적 포인트 (PFE 일 때만) ----
-                # ratio: 윈도우 동안 (Full Echo 실행 라우팅 / 전체 라우팅 호출) — 0~1
-                # total_point: stat_interval 시점의 네트워크 평균 포인트 잔고
-                if algo in ('pfe', 'pfe_tdec', 'pfe_c', 'pfe_c03', 'pfe_c_ade', 'pfe_c_pre_echo'):
-                    fe_series = getattr(sim, 'pfe_full_echo_ratio_series', None)
-                    tp_series = getattr(sim, 'pfe_total_point_series', None)
-                    if fe_series and tp_series:
-                        fe_chunks = [
-                            float(np.mean(fe_series[i:i + chunk_size]))
-                            for i in range(0, chunk_size * n_chunks, chunk_size)
-                        ]
-                        tp_chunks = [
-                            float(np.mean(tp_series[i:i + chunk_size]))
-                            for i in range(0, chunk_size * n_chunks, chunk_size)
-                        ]
-                        print(f"      [FE_rt ] {' '.join(f'{m:6.3f}' for m in fe_chunks)}   (1000-tick 평균, Full Echo 발동 비율)")
-                        print(f"      [Point ] {' '.join(f'{m:6.2f}' for m in tp_chunks)}   (1000-tick 평균, 노드별 total_point 평균)")
+                # ---- median 실선 + IQR 오차 막대 (일정 간격 세로선) ----
+                # yerr 는 (아래 길이, 위 길이) 두 행 — median 기준 비대칭 IQR 범위
+                # offset : 알고리즘마다 시작점을 어긋내 막대가 같은 x 에 겹치지 않게 함
+                yerr = np.vstack([median - q25, q75 - median])
+                spacing = max(1, len(x_axis) // 10)
+                offset = ALGORITHMS.index(algo) * spacing // len(ALGORITHMS)
+                ax.errorbar(x_axis, median, yerr=yerr,
+                            errorevery=(offset, spacing),
+                            capsize=3, elinewidth=1.2, capthick=1.2,
+                            label=label, color=color, linewidth=2.0)
 
-            ax.plot(x_axis, adt, label=LABELS[algo], color=COLORS[algo])
+                # ---- steady-state 요약 (마지막 절반 평균 → 시드별로 → median/IQR) ----
+                # 여기도 NaN 구간을 제외하고 집계 (nan 무시 계열)
+                half = adt_arr.shape[1] // 2
+                front_per_seed = np.nanmean(adt_arr[:, :half], axis=1)
+                back_per_seed  = np.nanmean(adt_arr[:, half:], axis=1)
+                front_adt = float(np.nanmedian(front_per_seed))
+                back_adt  = float(np.nanmedian(back_per_seed))
+                print(f"    [ADT] 앞절반={front_adt:6.2f}  뒤절반={back_adt:6.2f}")
+                md.write(f"\n- 앞 절반 평균 ADT (학습 과도기) : {front_adt:.2f}\n")
+                md.write(f"- 뒤 절반 평균 ADT (정착 후) : {back_adt:.2f}\n\n")
 
-        md_file.write("\n")
-        ax.set_title(exp['title'])
-        ax.set_xlabel('Simulator Time')
-        ax.set_ylabel('Average Delivery Time')
-        ax.legend()
-        ax.grid(True, alpha=0.3)
+            ax.set_title(f"λ={lam}")
+            ax.set_xlabel('Simulator Time')
+            ax.set_ylabel('Average Delivery Time')
+            ax.legend(loc='best', fontsize=10)
+            ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    filename = f"result_nsfnet_c_{c}.png"
+    filename = 'result_nsfnet.png'
     plt.savefig(filename, dpi=150)
-    print(f"결과 저장: {filename}")
+    print(f"\n결과 저장: {filename}")
     plt.close()
+
+    print(f"\n로그: {MD_PATH}")
 
 
 if __name__ == '__main__':
-    with open(MD_PATH, 'w', encoding='utf-8') as md:
-        md.write('# NSFNET c-sweep\n\n')
-        for c in C_VALUES:
-            run_one_c(c, md)
-    print(f"\n모든 c-sweep 완료. 로그: {MD_PATH}")
+    run_all()

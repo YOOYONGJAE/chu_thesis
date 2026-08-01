@@ -13,7 +13,9 @@ import matplotlib.pyplot as plt
 plt.rcParams['font.family'] = 'Malgun Gothic'   # Windows 한글 폰트 (그래프 한글 깨짐 방지)
 plt.rcParams['axes.unicode_minus'] = False       # 마이너스 기호 깨짐 방지
 from simulator import Simulator
+import diagnostics as diag
 from topology_grid import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACENCY
+# from topology_nsfnet import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACENCY
 
 # -------------------------------------------------------------------------
 # 파라미터 설정
@@ -54,7 +56,7 @@ LABELS = {
 COLORS = {
     'q_routing': '#117733',  # 진녹 (baseline 최단순)
     'aqfe':      '#44AA99',  # teal (AQRERM 의 부모)
-    'aqrerm':    '#CC79A7',  # 분홍보라 (baseline)
+    'aqrerm':    "#FF0000",  # 분홍보라 (baseline)
     'aqprice':    '#56B4E9',  # 하늘색 (제안 기법)
 }
 
@@ -62,17 +64,27 @@ COLORS = {
 SEEDS = list(range(100, 1001, 100))  # [100, 200, ..., 1000]
 
 STAT_INTERVAL = 100
-MD_PATH = 'result_lineage.md'
 
 EXPERIMENTS = [
-    # {'lam': 2, 'total_ticks': 40000},
-    # {'lam': 3, 'total_ticks': 40000},
-    {'lam': 3.5, 'total_ticks': 40000},
-    {'lam': 3.7, 'total_ticks': 40000},
-    {'lam': 3.8, 'total_ticks': 40000},
-    # {'lam': 3.9, 'total_ticks': 40000},
-    # {'lam': 4.0, 'total_ticks': 40000},
+    # 저, 중부하
+    # {'lam': 2.5, 'total_ticks': 20000},
+    # {'lam': 3.0, 'total_ticks': 20000},
+    # {'lam': 3.5, 'total_ticks': 20000},
+
+    # 고부하
+    {'lam': 3.7, 'total_ticks': 20000},
+    {'lam': 3.9, 'total_ticks': 20000},
+    {'lam': 4.1, 'total_ticks': 20000},
 ]
+
+# 파일명 태그: (토폴로지, 부하, 틱수). 토폴로지·틱수는 자동, 부하 태그는 수동.
+TOPO_TAG   = {36: 'GRID', 14: 'NSFNET', 15: 'PQ'}.get(GRID_NUM_NODES, f'{GRID_NUM_NODES}N')
+# RESULT_TAG = 'LOW'   # 부하 표기 (수동): LOW / HIGH 등
+RESULT_TAG = 'HIGH'   # 부하 표기 (수동): LOW / HIGH 등
+_BASENAME  = f'result_lineage({TOPO_TAG},{RESULT_TAG},{EXPERIMENTS[0]["total_ticks"]})'
+MD_PATH       = f'{_BASENAME}.md'
+PNG_PATH      = f'{_BASENAME}.png'
+LINK_PNG_PATH = f'{_BASENAME}_linkuse.png'
 
 
 # -------------------------------------------------------------------------
@@ -90,7 +102,7 @@ def run_one(algo, lam, total_ticks, seed):
 # 메인: 각 부하별로 알고리즘들을 10 시드씩 돌려 median + IQR 시각화
 # -------------------------------------------------------------------------
 def run_all():
-    fig, axes = plt.subplots(1, len(EXPERIMENTS), figsize=(60, 15), squeeze=False)
+    fig, axes = plt.subplots(1, len(EXPERIMENTS), figsize=(20 * len(EXPERIMENTS), 12), squeeze=False)
     axes = axes.flatten()  # EXPERIMENTS 가 1 개여도 1D 배열로 유지
     active_labels = ' / '.join(LABELS[a] for a in ALGORITHMS)
     fig.suptitle(
@@ -104,6 +116,9 @@ def run_all():
         md.write(f'- Algorithms: {[LABELS[a] for a in ALGORITHMS]}\n')
         md.write(f'- BASE_PARAMS: {BASE_PARAMS}\n\n')
 
+        diag.write_metric_guide_md(md)
+
+        link_data = []   # [(lam, {algo: link_sum}), ...] — 링크 다이어그램용
         for ax, exp in zip(axes, EXPERIMENTS):
             lam = exp['lam']
             total_ticks = exp['total_ticks']
@@ -112,6 +127,7 @@ def run_all():
             md.write(f"## λ={lam} ({total_ticks} ticks)\n\n")
             print(f"\n========== λ={lam} ==========")
 
+            per_algo_link = {}
             for algo in ALGORITHMS:
                 label = LABELS[algo]
                 color = COLORS[algo]
@@ -122,6 +138,10 @@ def run_all():
                 md.write("|------|-----------|-----------|-------------|---------------|\n")
 
                 adt_runs = []
+                echo_costs = []
+                switch_rates = []
+                rx_runs, echo_runs, switch_runs, link_dicts = [], [], [], []
+                te_runs, tm_runs = [], []          # R_x 의 분자·분모 시계열
                 for seed in SEEDS:
                     print(f"  Running seed={seed}...")
                     sim, adt = run_one(algo, lam, total_ticks, seed)
@@ -131,6 +151,18 @@ def run_all():
                           f"undelivered={und:6d}  delivery_rate={rate:5.1f}%")
                     md.write(f"| {seed} | {gen} | {dlv} | {und} | {rate:.1f}% |\n")
                     adt_runs.append(adt)
+                    ec = (sim.total_echo_queries / sim.total_route_calls
+                          if sim.total_route_calls > 0 else 0.0)
+                    echo_costs.append(ec)
+                    sw = (sim.total_switches / sim.total_route_calls
+                          if sim.total_route_calls > 0 else 0.0)
+                    switch_rates.append(sw)
+                    rx_runs.append(sim.r_ratio_series)
+                    te_runs.append(sim.t_est_series)
+                    tm_runs.append(sim.t_max_series)
+                    echo_runs.append(sim.echo_per_decision_series)
+                    switch_runs.append(sim.switch_rate_series)
+                    link_dicts.append(sim.link_usage)
 
                 # ---- 시드별 시리즈를 (n_seeds, n_windows) 배열로 쌓고 백분위수 계산 ----
                 # 전달 패킷이 0인 통계 구간은 simulator 가 NaN 을 넣으므로,
@@ -151,28 +183,72 @@ def run_all():
                             capsize=3, elinewidth=1.2, capthick=1.2,
                             label=label, color=color, linewidth=2.0)
 
-                # ---- 앞/뒤 절반 평균 ADT 요약 (각 시드 평균 → 시드 간 중앙값) ----
-                # 정착 구간은 실행 시간을 정확히 반으로 나눈 뒤 절반으로 정의 (임의 tick 아님)
-                half = adt_arr.shape[1] // 2
-                front_per_seed = np.nanmean(adt_arr[:, :half], axis=1)
-                back_per_seed  = np.nanmean(adt_arr[:, half:], axis=1)
-                front_adt = float(np.nanmedian(front_per_seed))
-                back_adt  = float(np.nanmedian(back_per_seed))
-                print(f"    [ADT] 앞절반={front_adt:6.2f}  뒤절반={back_adt:6.2f}")
-                md.write(f"\n- 앞 절반 평균 ADT (학습 과도기) : {front_adt:.2f}\n")
-                md.write(f"- 뒤 절반 평균 ADT (정착 후) : {back_adt:.2f}\n\n")
+                # ---- ADT 전체구간 요약 + 진단 시계열 + 링크. 논문에선 필요한 것만 발췌 ----
+                # 구간을 나누지 않고 위에서 그린 실선(median)·띠(q75−q25)를 그대로 시간 평균한다.
+                overall_adt = float(np.nanmean(median))
+                overall_iqr = float(np.nanmean(q75 - q25))
+                echo_cost   = float(np.nanmedian(echo_costs))
+                switch_rate = float(np.nanmedian(switch_rates))
+                # R_x 는 진단 시계열의 전체구간 평균 — 아래 시계열 표의 끝 행과 같은 값
+                rx_med = diag.median_series(rx_runs)
+                rx_overall = diag.series_overall(rx_med)
+                te_med = diag.median_series(te_runs)     # R_x 의 분자 (T_est 노드평균)
+                tm_med = diag.median_series(tm_runs)     # R_x 의 분모 (T_max 노드평균, 단조 증가)
+                print(f"    [지표] ADT={overall_adt:6.2f} IQR폭={overall_iqr:6.2f} "
+                      f"에코={echo_cost:.2f} 변경률={switch_rate * 100:.1f}% R_x={rx_overall:.3f}")
+                md.write(f"\n- 전체 평균 ADT (중앙값 실선의 시간평균 // 단위 = 틱) : {overall_adt:.2f}\n")
+                md.write(f"- 전체 IQR 폭 (띠 평균 폭 // 단위 = 틱) : {overall_iqr:.2f}\n")
+                md.write(f"- 결정당 에코 이웃 수 (전체 평균 // 단위 = 개/결정) : {echo_cost:.2f}\n")
+                md.write(f"- 경로 변경률 (전체 평균 // 단위 = %) : {switch_rate * 100:.1f}%\n")
+                md.write(f"- R_x (전체 평균, 혼잡 신호 // 단위 없음, 0~1 비율) : {rx_overall:.3f}\n")
+                # R_x 의 분자·분모. T_est 는 전체구간 평균, T_max 는 단조 증가라 최종값.
+                md.write(f"- T_est (전체 평균, R_x 분자 // 단위 = 틱) : {diag.series_overall(te_med):.2f}\n")
+                md.write(f"- T_max (최종값, R_x 분모 // 단위 = 틱) : {diag.series_final(tm_med):.2f}\n\n")
+
+                # 진단 시계열 (구간 평균 + 전체 평균) + 링크 사용량 수치
+                diag.write_diag_series_md(md, label,
+                                          rx_med,
+                                          diag.median_series(echo_runs),
+                                          diag.median_series(switch_runs),
+                                          echo_cost, switch_rate,
+                                          t_est_med=te_med, t_max_med=tm_med)
+                link_sum = diag.sum_link_usage(link_dicts)
+                md.write(f"#### 링크 사용량 ({label}, 통과량 순, 시드 합)\n\n")
+                md.write(diag.link_usage_md(link_sum))
+                md.write("\n")
+                per_algo_link[algo] = link_sum
 
             ax.set_title(f"λ={lam}")
             ax.set_xlabel('Simulator Time')
             ax.set_ylabel('Average Delivery Time')
             ax.legend(loc='best', fontsize=10)
             ax.grid(True, alpha=0.3)
+            link_data.append((lam, per_algo_link))
 
     plt.tight_layout()
-    filename = 'result_lineage.png'
-    plt.savefig(filename, dpi=150)
-    print(f"\n결과 저장: {filename}")
+    plt.savefig(PNG_PATH, dpi=150)
+    print(f"\n결과 저장: {PNG_PATH}")
     plt.close()
+
+    # ---- 링크 사용량 다이어그램 (그리드: 행=알고리즘, 열=부하). grid 만 ----
+    if GRID_NUM_NODES == 36:
+        nrows, ncols = len(ALGORITHMS), len(link_data)
+        figL, axesL = plt.subplots(nrows, ncols, figsize=(6 * ncols, 6 * nrows), squeeze=False)
+        figL.suptitle(
+            f"{topo_name(GRID_NUM_NODES)} — link usage  [color & width = usage level]",
+            fontsize=15)
+        vmin, vmax = diag.link_usage_range([per[a] for (lam, per) in link_data for a in per])
+        for r, algo in enumerate(ALGORITHMS):
+            for c, (lam, per_algo) in enumerate(link_data):
+                diag.plot_link_thickness(axesL[r][c], per_algo[algo],
+                                         GRID_NUM_NODES, f"{algo}  λ={lam}",
+                                         vmin=vmin, vmax=vmax)
+        diag.add_link_colorbar(figL, axesL.ravel().tolist(), vmin, vmax)
+        figL.savefig(LINK_PNG_PATH, dpi=150, bbox_inches='tight')
+        plt.close(figL)
+        print(f"결과 링크 PNG : {LINK_PNG_PATH}")
+    else:
+        print("링크 다이어그램은 grid 에서만 생성 — 현재 grid 아님 (수치는 md 참조)")
 
 
 if __name__ == '__main__':

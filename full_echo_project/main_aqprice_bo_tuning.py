@@ -214,7 +214,7 @@ def main():
     ax1.plot(eval_x, convergence, '-', color='#0072B2', linewidth=2.2,
              label='best so far')
     ax1.axvline(N_INITIAL + 0.5, color='red', linestyle='--', linewidth=1,
-                alpha=0.6, label=f'BO 시작 (after {N_INITIAL} random)')
+                alpha=0.6, label=f'BO start (after {N_INITIAL} random)')
     ax1.set_xlabel('Evaluation #')
     ax1.set_ylabel('Score (lower is better)')
     ax1.set_title('Convergence Curve')

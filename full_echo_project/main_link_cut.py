@@ -107,7 +107,7 @@ def run_all():
     )
     active_labels = ' / '.join(LABELS[a] for a in ALGORITHMS)
     fig.suptitle(
-        f"6x6 Grid Link Cut — PFE 변형 comparison ({active_labels}) "
+        f"6x6 Grid Link Cut — PFE variant comparison ({active_labels}) "
         f"(seeds={SEEDS[0]}~{SEEDS[-1]}, n={len(SEEDS)}, cut@tick={CUT_TICK}, median + IQR band)"
     )
 

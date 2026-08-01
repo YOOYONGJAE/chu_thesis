@@ -68,6 +68,15 @@ class Node:
         self.echo_query_count = 0
         self.route_call_count = 0
 
+        # 경로 변경률(next-hop 변경률) 진단 — 안정 구간에서 선택이 자주 뒤집히는지 확인.
+        #   같은 목적지 d 에 대해 직전에 고른 next_hop 을 기억했다가, 이번 결정에서
+        #   달라졌으면 변경 1회로 집계한다. 변경률 = 변경 횟수 / 라우팅 결정 횟수.
+        #   모든 알고리즘에서 집계하므로 알고리즘 간 경로 진동 정도를 비교할 수 있다.
+        self.last_choice = {}              # dst -> 최근에 고른 next_hop
+        self.switch_count = 0              # 실행 전체 누적 변경 횟수 (리셋 없음)
+        self.window_switch_count   = 0     # 윈도우 단위 변경 횟수 (simulator 가 읽고 리셋)
+        self.window_decision_count = 0     # 윈도우 단위 라우팅 결정 횟수 (모든 알고리즘)
+
     # -------------------------------------------------------------------------
     # T_est 업데이트 (AQFE / AQRERM / AQPRICE)
     # T_est = 모든 목적지에 대해 min_y Q[d][y] 의 평균 (AQRERM 정의)
@@ -123,18 +132,29 @@ class Node:
     # -------------------------------------------------------------------------
     def route(self, packet, current_tick, all_nodes):
         self.route_call_count += 1
+        self.window_decision_count += 1
         if self.algorithm == 'q_routing':
-            return self._route_q(packet, current_tick, all_nodes)
+            next_hop = self._route_q(packet, current_tick, all_nodes)
         elif self.algorithm == 'aqfe':
-            return self._route_aqfe(packet, current_tick, all_nodes)
+            next_hop = self._route_aqfe(packet, current_tick, all_nodes)
         elif self.algorithm == 'aqrerm':
-            return self._route_aqrerm(packet, current_tick, all_nodes)
+            next_hop = self._route_aqrerm(packet, current_tick, all_nodes)
         elif self.algorithm == 'aqprice':
-            return self._route_aqprice(packet, current_tick, all_nodes)
+            next_hop = self._route_aqprice(packet, current_tick, all_nodes)
         else:
             raise ValueError(f"unknown algorithm: {self.algorithm} "
                              f"(정리판은 q_routing/aqfe/aqrerm/aqprice 만 지원, "
                              f"그 외 변형은 legacy_algorithm_files/ 참조)")
+
+        # 경로 변경률 집계: 같은 목적지에 대해 직전 선택과 달라졌으면 변경으로 카운트.
+        # (해당 목적지의 첫 결정은 비교 대상이 없어 변경으로 세지 않고 기록만 한다)
+        dst = packet.dst
+        prev = self.last_choice.get(dst)
+        if prev is not None and prev != next_hop:
+            self.switch_count += 1
+            self.window_switch_count += 1
+        self.last_choice[dst] = next_hop
+        return next_hop
 
     # -------------------------------------------------------------------------
     # Q-routing (Boyan & Littman 1994)

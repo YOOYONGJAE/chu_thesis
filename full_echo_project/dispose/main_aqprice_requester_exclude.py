@@ -46,8 +46,8 @@ BASE_KEY = 'include'                # 개선 계산의 기준(baseline)
 MAIN_KEY = 'exclude'                # 현재 AQPRICE 기본, 기준선도 이쪽 정착값 기준
 VARIANT_EXCLUDE = {'include': False, 'exclude': True}
 LABELS = {
-    'include': 'AQPRICE (요청노드 포함, exclude=False)',
-    'exclude': 'AQPRICE (요청노드 제외, exclude=True)',
+    'include': 'AQPRICE (requester included, exclude=False)',
+    'exclude': 'AQPRICE (requester excluded, exclude=True)',
 }
 COLORS = {
     'include': '#D55E00',  # 주홍

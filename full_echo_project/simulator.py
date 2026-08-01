@@ -71,13 +71,15 @@ class Simulator:
         cut_tick = cut_u = cut_v = None  # 링크 절단 비활성 — 항상 None 고정
 
         adt_series = []
-        queue_len_series = []   # stat_interval 시점의 모든 노드 queue 길이 합
-        t_est_series     = []   # stat_interval 시점의 네트워크 평균 T_est (finite 만)
-        t_max_series     = []   # stat_interval 시점의 네트워크 평균 T_max (finite 만)
-        # AQPRICE 진단 시계열 — stat_interval 윈도우 단위로 측정
-        # 다른 알고리즘에선 카운터/total_point 가 0 이므로 시계열도 모두 0
-        pfe_total_point_series     = []  # 윈도우 종료 시점의 네트워크 평균 누적 포인트
-        pfe_full_echo_ratio_series = []  # 윈도우 동안 Full Echo 발동 / 라우팅 호출
+        # 진단 시계열 (3종) — stat_interval 윈도우 단위로 측정
+        r_ratio_series           = []  # 윈도우 시점 네트워크 평균 R_x = T_est/T_max (finite 노드만)
+        t_est_series             = []  # 같은 시점 T_est 의 노드 평균 (R_x 의 분자를 따로 보기 위함)
+        t_max_series             = []  # 같은 시점 T_max 의 노드 평균 (분모. 노드마다 단조 증가)
+        echo_per_decision_series = []  # 윈도우 동안 이웃 조회 수 / 라우팅 결정 수 (모든 알고리즘)
+        switch_rate_series       = []  # 윈도우 동안 next-hop 변경 / 라우팅 결정 (경로 진동)
+        # 결정당 에코 이웃 수(구간)는 누적 카운터의 구간 델타로 계산 → 직전 스냅샷 보관
+        prev_eq = 0   # 직전 윈도우까지 누적 echo_query 합
+        prev_rc = 0   # 직전 윈도우까지 누적 route_call 합
         window_delivered = []
 
         # =====================================================================
@@ -173,36 +175,43 @@ class Simulator:
                 else:
                     adt_series.append(float('nan'))
 
-                # 모든 노드 queue 길이 합산 (현재 시점 네트워크 적체량)
-                total_qlen = sum(len(node.queue) for node in self.nodes)
-                queue_len_series.append(total_qlen)
+                # 네트워크 평균 R_x = T_est/T_max — 노드별 비율을 finite 인 노드만 평균.
+                # 분자·분모를 따로도 남긴다. 셋 다 같은 노드 집합을 쓰므로 열끼리 대응이 된다.
+                # (비율의 평균 != 평균의 비율이므로 T_est 평균 ÷ T_max 평균 은 R_x 와 일치하지 않는다)
+                valid = [n for n in self.nodes
+                         if math.isfinite(n.T_est) and math.isfinite(n.T_max) and n.T_max > 0]
+                r_ratio_series.append(
+                    float(np.mean([n.T_est / n.T_max for n in valid])) if valid else 0.0)
+                t_est_series.append(float(np.mean([n.T_est for n in valid])) if valid else 0.0)
+                t_max_series.append(float(np.mean([n.T_max for n in valid])) if valid else 0.0)
 
-                # 네트워크 평균 T_est / T_max — finite 값만 모아 평균
-                t_est_vals = [n.T_est for n in self.nodes if math.isfinite(n.T_est)]
-                t_max_vals = [n.T_max for n in self.nodes if math.isfinite(n.T_max)]
-                t_est_series.append(float(np.mean(t_est_vals)) if t_est_vals else 0.0)
-                t_max_series.append(float(np.mean(t_max_vals)) if t_max_vals else 0.0)
+                # 결정당 에코 이웃 수 (구간): 누적 조회·결정의 구간 델타로 계산 (모든 알고리즘 적용)
+                cur_eq = sum(n.echo_query_count for n in self.nodes)
+                cur_rc = sum(n.route_call_count for n in self.nodes)
+                d_eq = cur_eq - prev_eq
+                d_rc = cur_rc - prev_rc
+                echo_per_decision_series.append(d_eq / d_rc if d_rc > 0 else 0.0)
+                prev_eq, prev_rc = cur_eq, cur_rc
 
-                # AQPRICE 진단: 윈도우 동안 누적된 노드 카운터를 합산해 비율 계산 후 리셋
-                tp_sum          = sum(n.total_point for n in self.nodes)
-                fe_count_sum    = sum(n.pfe_window_full_echo_count for n in self.nodes)
-                route_count_sum = sum(n.pfe_window_route_count     for n in self.nodes)
-                pfe_total_point_series.append(tp_sum / len(self.nodes) if self.nodes else 0.0)
-                pfe_full_echo_ratio_series.append(
-                    fe_count_sum / route_count_sum if route_count_sum > 0 else 0.0
-                )
+                # 경로 변경률: 윈도우 동안 전 노드의 next-hop 변경 수 / 라우팅 결정 수
+                sw_sum  = sum(n.window_switch_count   for n in self.nodes)
+                dec_sum = sum(n.window_decision_count for n in self.nodes)
+                switch_rate_series.append(sw_sum / dec_sum if dec_sum > 0 else 0.0)
+
                 for n in self.nodes:
                     n.pfe_window_full_echo_count = 0
                     n.pfe_window_route_count     = 0
+                    n.window_switch_count        = 0
+                    n.window_decision_count      = 0
 
                 window_delivered = []
 
         # 결과 노출
-        self.queue_len_series = queue_len_series
-        self.t_est_series     = t_est_series
-        self.t_max_series     = t_max_series
-        self.pfe_total_point_series     = pfe_total_point_series
-        self.pfe_full_echo_ratio_series = pfe_full_echo_ratio_series
+        self.r_ratio_series           = r_ratio_series
+        self.t_est_series             = t_est_series
+        self.t_max_series             = t_max_series
+        self.echo_per_decision_series = echo_per_decision_series
+        self.switch_rate_series       = switch_rate_series
         self.total_generated = total_generated
         self.total_delivered = total_delivered
         self.undelivered_count = sum(
@@ -213,6 +222,9 @@ class Simulator:
         # echo_cost = total_echo_queries / total_route_calls = 결정당 평균 조회 이웃 수
         self.total_echo_queries = sum(node.echo_query_count for node in self.nodes)
         self.total_route_calls  = sum(node.route_call_count for node in self.nodes)
+        # 경로 변경률 진단 — 전체 next-hop 변경 횟수 합산
+        # switch_rate = total_switches / total_route_calls = 결정당 next-hop 변경 비율
+        self.total_switches = sum(node.switch_count for node in self.nodes)
         # =====================================================================
         # [절단 전/후 link_usage 결과 노출 — 이번 연구 마감 범위 제외]
         # 재활성화 시 아래 주석과 link_usage_pre/post_cut 초기화·집계 블록을
