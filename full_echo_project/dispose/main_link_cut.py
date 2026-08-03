@@ -1,285 +1,206 @@
+# =============================================================================
+# [링크 절단 시나리오 스크립트 — 이번 연구 마감 범위 제외]
+#
+# 이 파일은 연구 진행 중 링크 장애 발생 시 Q-routing / AQFE / AQRERM / AQPRICE
+# 4종 알고리즘이 얼마나 빠르게 대체 경로를 학습하는지 확인하기 위해 작성되었습니다.
+#
+# 이번 논문 마감 범위에는 해당 실험을 포함하지 않기로 결정하였으므로, 파일 하단의
+# 실행 블록(if __name__ == '__main__')을 주석 처리하여 실수로 실행되지 않도록
+# 비활성화해 두었습니다.
+#
+# 이후 연구에서 재활용이 필요하면 하단 실행 블록 주석을 해제하고,
+# simulator.py 내 링크 절단 관련 주석 처리 구간도 함께 해제하십시오.
+#
+# [요약] 링크 절단 회복력 비교 — 4종 알고리즘, tick 4000 에서 링크 절단
+# - 6x6 grid, 10 시드, 시나리오 2개: top bridge (14,15) / bottom bridge (2,3) 절단
+# - Pre-cut / Post-cut ADT 를 분리 집계 → 토폴로지 변화 적응력 측정
+# - 산출물: result_link_cut.md / .png
+# =============================================================================
 import random
-from collections import Counter
 import numpy as np
 import matplotlib
-matplotlib.use('Agg')
+matplotlib.use('Agg')  # GUI 없이 파일로만 저장
 import matplotlib.pyplot as plt
+plt.rcParams['font.family'] = 'Malgun Gothic'   # Windows 한글 폰트 (그래프 한글 깨짐 방지)
+plt.rcParams['axes.unicode_minus'] = False       # 마이너스 기호 깨짐 방지
 from simulator import Simulator
-from echo_controller import LTrainController
-from topology_grid import NUM_NODES as G_N, ADJACENCY as G_A
+from topology_grid import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACENCY
 
-SEED = 100
-BASE_PARAMS = {'eta': 0.9, 'k': 0.5, 'L': 3}
-TOPO = {'num_nodes': G_N, 'adjacency': G_A}
+# -------------------------------------------------------------------------
+# 파라미터 설정
+# -------------------------------------------------------------------------
+ETA = 0.9
+K   = 0.5
+L   = 3
+C   = 0.22   # aqprice 의 큐 페널티 가중치 (다른 알고리즘은 이 키를 안 읽음)
+BASE_PARAMS = {'eta': ETA, 'k': K, 'L': L, 'c': C}
 
+TOPOLOGY_GRID = {'num_nodes': GRID_NUM_NODES, 'adjacency': GRID_ADJACENCY}
+
+# 비교 대상 알고리즘 (4종, main_compare_PFE.py 와 동일)
 ALGORITHMS = [
-    # 'q_routing',
-    # 'aqfe',
+    'q_routing',
+    'aqfe',
     'aqrerm',
-    # 'aqrerm_c03',
-    # 'aqrerm_c',
-    # 'aqrerm_c_tdec',
-    # 'pfe',
-    # 'pfe_tdec',
-    # 'pfe_ppc',
-    # 'pfe_c03',
-    # 'aqrerm_c_ade',
-    # 'pfe_c_ade',
-    # 'pfe_c_pre_echo',
-    # 'pfe_c_pre_echo_tick',  # ★ 변형: 라우팅 안 해도 매 tick gr 적립 (idle 노드도 포인트 누적)
-    # 'pfe_pre_echo_tick',    # ★ 변형: 큐 항 (c · queue) 제거, 선택은 t / Q 만
-    # 'pfe_then_aqrerm',      # ★ Hybrid: switch_tick 까지 PFE_c_pre_echo_tick, 이후 AQRERM
-    # === link_cut 전용 (_l0 / no_mem variants) — 필요 시 활성 ===
-    'aqrerm_l0',                # AQRERM + 7000 이후 L=0
-    # 'aqrerm_c03_l0',
-    # 'aqrerm_c05_l0',
-    # 'aqrerm_c_ade_l0',         # AQRERM_c=0.5_AdE + 7000 이후 L=0
-    # 'pfe_c05_l0',
-    # 'pfe_c03_l0',
-    # 'pfe_c01_ade_l0',           # L=0 + c=0.1
-    # 'pfe_c_ade_l0',             # L=0 + c=0.5
-    # 'pfe_c10_ade_l0',           # L=0 + c=1.0
-    # 'pfe_c_pre_echo_l0',        # Pre-echo + 7000 이후 L=0 강제
-    # 'pfe_c_pre_echo_tick_l0',   # Pre-echo + tick 적립 + 7000 이후 L=0 강제
-    ]
-LABELS = {'q_routing': 'Q-routing', 'aqfe': 'AQFE', 'aqrerm': 'AQRERM',
-          'aqrerm_c': 'AQRERM_c',
-          'aqrerm_c_tdec': 'AQRERM_c=0.5_Tdec',
-          'aqrerm_c_low_c': 'AQRERM_c=0.1',
-          'aqrerm_c03':   'AQRERM_c=0.3',
-          'aqrerm_c07':   'AQRERM_c=0.7',
-          'aqrerm_c_high_c': 'AQRERM_c=1.0',
-          'aqrerm_c_7000_no_mem': 'AQRERM_c_7000_NO_MEM',
-          'aqrerm_c_all_no_mem': 'AQRERM_c_ALL_NO_MEM',
-          'aqrerm_c_l_train': 'AQRERM_c_L_TRAIN',
-          'aqrerm_c_l_close': 'AQRERM_c_L_CLOSE',
-          'pfe': 'PFE',
-          'pfe_tdec': 'PFE_Tdec',
-          'pfe_c':    'PFE_c=0.5',
-          'pfe_c03':  'PFE_c=0.3',
-          'aqrerm_c_ade': 'AQRERM_c=0.5_AdE',
-          'pfe_c_ade':     'PFE_c=0.5_AdE',
-          'pfe_c_pre_echo': 'PFE_c_PreEcho',
-          'pfe_c_pre_echo_tick': 'PFE_c_PreEcho_Tick',
-          'pfe_pre_echo_tick':   'PFE_PreEcho_Tick',
-          'pfe_then_aqrerm': 'Hybrid_PFE→AQRERM',
-          'learned_aqrerm': 'Learned AQRERM', 'bandit_aqrerm': 'Bandit AQRERM',
-          # === link_cut 전용 (_l0 / no_mem variants) ===
-          'aqrerm_l0': 'AQRERM_L=0',
-          'aqrerm_no_mem': 'AQRERM_no_mem',
-          'aqrerm_c01_l0': 'AQRERM_c=0.1_L=0',
-          'aqrerm_c03_l0': 'AQRERM_c=0.3_L=0',
-          'aqrerm_c05_l0': 'AQRERM_c=0.5_L=0',
-          'aqrerm_c05_l0_tdec': 'AQRERM_c=0.5_L=0_Tdec',
-          'aqrerm_c07_l0': 'AQRERM_c=0.7_L=0',
-          'pfe_c05_l0':     'PFE_c=0.5_L=0',
-          'pfe_c03_l0':     'PFE_c=0.3_L=0',
-          'pfe_c01_ade_l0': 'PFE_c=0.1_L=0_AdE',
-          'pfe_c_ade_l0':   'PFE_c=0.5_L=0_AdE',
-          'pfe_c10_ade_l0': 'PFE_c=1.0_L=0_AdE',
-          'aqrerm_c_ade_l0': 'AQRERM_c=0.5_L=0_AdE',
-          'pfe_c_pre_echo_l0':      'PFE_c_PreEcho_L=0',
-          'pfe_c_pre_echo_tick_l0': 'PFE_c_PreEcho_Tick_L=0',
-          'aqrerm_c_7000_no_c':  'AQRERM_c=0_L=0',
-          }
-COLORS = {'q_routing': 'blue', 'aqfe': 'orange',
-          # === 활성화 변형: family 별 hue 분리, c 값 따라 톤 차이 ===
-          'aqrerm':         'navy',               # 기준선 — 차가운 단일색
-          'aqrerm_c':        'darkorange',         # AQRERM_c family (오렌지) — c=0.5
-          'aqrerm_c03':    'gold',               # AQRERM_c family — c=0.3 (밝은 오렌지)
-          'aqrerm_c_ade':  'green',              # AQRERM_c + AdE — family 와 구분
-          'pfe_c':          'red',                # PFE family (빨강) — c=0.5
-          'pfe_c03':        'lightcoral',         # PFE family — c=0.3 (밝은 빨강)
-          'pfe_c_ade':      'magenta',            # PFE + AdE — family 와 구분
-          'pfe_c_pre_echo': 'purple',             # PFE + Pre-echo — 보라 (magenta 와 다른 톤)
-          'pfe_c_pre_echo_tick': 'red',        # PFE + Pre-echo + tick 적립 — 같은 family, 진한 톤
-          'pfe_pre_echo_tick':   'teal',       # PFE + Pre-echo + tick 적립 + 큐 항 제거 — 청록
-          'pfe_then_aqrerm': 'darkgreen',      # Hybrid — 두 family 와 명확히 구분되는 녹색
-
-          # === 비활성화 변형: 기존 매핑 유지 ===
-          'aqrerm_c_tdec':   'skyblue',
-          'aqrerm_c_low_c':  'chocolate',
-          'aqrerm_c07':    'magenta',
-          'aqrerm_c_high_c': 'darkmagenta',
-          'aqrerm_c_7000_no_mem': 'cyan',
-          'aqrerm_c_all_no_mem': 'teal',
-          'aqrerm_c_l_train': 'black',
-          'aqrerm_c_l_close': 'olive',
-          'pfe':            'black',
-          'pfe_tdec':       'crimson',
-          'learned_aqrerm': 'brown', 'bandit_aqrerm': 'purple',
-
-          # === link_cut 전용 (_l0 / no_mem variants) ===
-          'aqrerm_l0':      '#D55E00',            # 주홍 (AQRERM family L=0 변형)
-          'aqrerm_no_mem':  'magenta',
-          'aqrerm_c01_l0': 'gold',
-          'aqrerm_c03_l0': '#0072B2',
-          'aqrerm_c05_l0': '#E69F00',            # 오렌지
-          'aqrerm_c05_l0_tdec': 'skyblue',
-          'aqrerm_c07_l0': 'magenta',
-          'pfe_c05_l0':     'red',
-          'pfe_c03_l0':     'lightcoral',
-          'pfe_c01_ade_l0': '#F0E442',            # 노랑 (c=0.1, 옅은 톤 느낌)
-          'pfe_c_ade_l0':   "#CFD66B",            # 분홍보라 (c=0.5, 기준)
-          'pfe_c10_ade_l0': '#0072B2',            # 파랑 (c=1.0, 비활성)
-          'aqrerm_c_ade_l0': "#0044FF",          # 청록 (AQRERM_c=0.5_L=0_AdE)
-          'pfe_c_pre_echo_l0':      "#9CAEE9",    # PFE Pre-echo + L=0 at 7000
-          'pfe_c_pre_echo_tick_l0': "#E983BB",    # 분홍 (Pre-echo + tick 적립 + L=0 at 7000)
-          'aqrerm_c_7000_no_c':  'crimson',        # c=0, L=0 at 7000
-          }
-
-STAT_INTERVAL = 200
-CUT_TICK = 7000
-TOTAL_TICKS = 80000
-
-# 절단 시나리오: 두 다리만
-CUT_SCENARIOS = [
-    {'name': '(14,15) [top bridge]',      'cuts': [(CUT_TICK, 14, 15)]},
-    {'name': '(2,3) [bottom bridge]', 'cuts': [(CUT_TICK, 2, 3)]},
+    'aqprice',
 ]
+LABELS = {
+    'q_routing': 'Q-routing',
+    'aqfe':      'AQFE',
+    'aqrerm':    'AQRERM',
+    'aqprice':    'AQPRICE',
+}
+# 적녹색약 친화 (Wong palette)
+COLORS = {
+    'q_routing': '#117733',  # 진녹 (baseline 최단순)
+    'aqfe':      '#44AA99',  # teal (AQRERM 의 부모)
+    'aqrerm':    '#CC79A7',  # 분홍보라 (baseline)
+    'aqprice':    '#56B4E9',  # 하늘색 (제안 기법)
+}
 
-# 부하
-LAMBDAS = [1.5, 2]
+# 10 개 시드 × 알고리즘 × (절단 시나리오 × 부하) 별 반복
+SEEDS = list(range(100, 1001, 100))  # [100, 200, ..., 1000]
 
-# c-sweep 설정
-C_VALUES = [0.22]
+STAT_INTERVAL = 100
 MD_PATH = 'result_link_cut.md'
 
+# -------------------------------------------------------------------------
+# 링크 절단 시나리오 (main_link_cut.py 기반)
+# -------------------------------------------------------------------------
+CUT_TICK = 4000
+TOTAL_TICKS = 20000
+
+CUT_SCENARIOS = [
+    {'name': '(14,15) [top bridge]',    'cuts': [(CUT_TICK, 14, 15)]},
+    {'name': '(2,3) [bottom bridge]',   'cuts': [(CUT_TICK, 2, 3)]},
+]
+
+# 부하 (절단 시나리오용 — 보통 절단 효과를 잘 보려고 중부하로 잡음)
+LAMBDAS = [1.5, 2]
+# LAMBDAS = [2.5, 3]
+
 
 # -------------------------------------------------------------------------
-# 한 c 값에 대한 실험: 2개 절단 x 3개 부하 = 6개 패널
+# 단일 (algo, lam, seed, cuts) 실행 헬퍼
 # -------------------------------------------------------------------------
-def run_one_c(c, md_file):
-    # memory_cut_tick : link_cut 이후 L=0 강제용 (link_cut 전용)
-    # switch_tick     : pfe_then_aqrerm 전용 (다른 알고리즘은 무시)
-    params = {**BASE_PARAMS, 'c': c, 'memory_cut_tick': CUT_TICK, 'switch_tick': 15000}
+def run_one(algo, lam, seed, cuts):
+    random.seed(seed)
+    np.random.seed(seed)
+    sim = Simulator(algorithm=algo, params=BASE_PARAMS, seed=seed, topology=TOPOLOGY_GRID)
+    adt = sim.run(
+        lam=lam,
+        total_ticks=TOTAL_TICKS,
+        stat_interval=STAT_INTERVAL,
+        link_cuts=cuts,
+    )
+    return sim, adt
 
-    fig, axes = plt.subplots(len(CUT_SCENARIOS), len(LAMBDAS), figsize=(45, 20), squeeze=False)
-    train_l_range = f"{min(LTrainController.ACTIONS)}~{max(LTrainController.ACTIONS)}"
-    fig.suptitle(f"6x6 Grid (L={BASE_PARAMS['L']}, TRAIN_L={train_l_range}, seed={SEED})")
 
-    md_file.write(f"## c = {c}\n\n")
+# -------------------------------------------------------------------------
+# 메인: 각 (scenario, lambda) 셀에 알고리즘들을 시드 sweep 후 median + IQR 시각화
+# -------------------------------------------------------------------------
+def run_all():
+    fig, axes = plt.subplots(
+        len(CUT_SCENARIOS), len(LAMBDAS),
+        figsize=(45, 20),
+        squeeze=False,
+    )
+    active_labels = ' / '.join(LABELS[a] for a in ALGORITHMS)
+    fig.suptitle(
+        f"6x6 Grid Link Cut — PFE variant comparison ({active_labels}) "
+        f"(seeds={SEEDS[0]}~{SEEDS[-1]}, n={len(SEEDS)}, cut@tick={CUT_TICK}, median + IQR band)"
+    )
 
-    for row, scenario in enumerate(CUT_SCENARIOS):
-        md_file.write(f"### Cut {scenario['name']}\n\n")
-        for col, lam in enumerate(LAMBDAS):
-            ax = axes[row, col]
-            md_file.write(f"#### λ={lam} ({TOTAL_TICKS} ticks)\n\n")
-            md_file.write("| algo | generated | delivered | undelivered | delivery_rate |\n")
-            md_file.write("|------|-----------|-----------|-------------|---------------|\n")
+    with open(MD_PATH, 'w', encoding='utf-8') as md:
+        md.write('# 6x6 Grid Link Cut + PFE 변형 comparison (seed sweep)\n\n')
+        md.write(f'- Seeds: {SEEDS}\n')
+        md.write(f'- Algorithms: {[LABELS[a] for a in ALGORITHMS]}\n')
+        md.write(f'- BASE_PARAMS: {BASE_PARAMS}\n')
+        md.write(f'- CUT_TICK: {CUT_TICK}, TOTAL_TICKS: {TOTAL_TICKS}\n\n')
 
-            print(f"\n=== c={c} Cut {scenario['name']} λ={lam} ===")
-            for algo in ALGORITHMS:
-                random.seed(SEED)
-                np.random.seed(SEED)
-                # AQRERM_c_L_TRAIN 은 학습 후보 L 범위도 같이 표기
-                if algo == 'aqrerm_c_l_train':
-                    train_l_range = f"{min(LTrainController.ACTIONS)}~{max(LTrainController.ACTIONS)}"
-                    print(f"  알고리즘 시작 >> {LABELS[algo]}... (TRAIN_L={train_l_range})")
-                else:
-                    print(f"  알고리즘 시작 >> {LABELS[algo]}...")
+        x_axis = np.arange(1, TOTAL_TICKS // STAT_INTERVAL + 1) * STAT_INTERVAL
 
-                # 시뮬레이터 생성, 링크 절단 시나리오 전달
-                sim = Simulator(algorithm=algo, params=params, seed=SEED, topology=TOPO)
-                # 링크 절단 시나리오 전달
-                adt = sim.run(
-                    lam=lam,
-                    total_ticks=TOTAL_TICKS,
-                    stat_interval=STAT_INTERVAL,
-                    link_cuts=scenario['cuts']
-                )
+        for row, scenario in enumerate(CUT_SCENARIOS):
+            md.write(f"## Cut {scenario['name']}\n\n")
 
-                gen, dlv, und = sim.total_generated, sim.total_delivered, sim.undelivered_count
-                rate = (dlv / gen * 100) if gen > 0 else 0.0
-                print(f"    {LABELS[algo]:18s} generated={gen:6d}  delivered={dlv:6d}  "
-                      f"undelivered={und:6d}  delivery_rate={rate:5.1f}%")
-                md_file.write(f"| {LABELS[algo]} | {gen} | {dlv} | {und} | {rate:.1f}% |\n")
+            for col, lam in enumerate(LAMBDAS):
+                ax = axes[row, col]
+                print(f"\n========== Cut {scenario['name']}  λ={lam} ==========")
 
-                # ---- T_est / T_max 시간순 10등분 평균 (절단 전후 추이 진단) ----
-                t_est_series = getattr(sim, 't_est_series', None)
-                t_max_series = getattr(sim, 't_max_series', None)
-                if t_est_series and t_max_series:
-                    n_t = len(t_est_series)
-                    n_chunks = 25
-                    chunk_size = max(1, n_t // n_chunks)
-                    t_est_chunks = [
-                        float(np.mean(t_est_series[i:i + chunk_size]))
-                        for i in range(0, chunk_size * n_chunks, chunk_size)
-                    ]
-                    t_max_chunks = [
-                        float(np.mean(t_max_series[i:i + chunk_size]))
-                        for i in range(0, chunk_size * n_chunks, chunk_size)
-                    ]
-                    print(f"      [T_est ] {' '.join(f'{m:6.2f}' for m in t_est_chunks)}   (시간순 10등분, 네트워크 평균)")
-                    print(f"      [T_max ] {' '.join(f'{m:6.2f}' for m in t_max_chunks)}   (시간순 10등분, 네트워크 평균)")
+                md.write(f"### λ={lam} ({TOTAL_TICKS} ticks)\n\n")
 
-                # ---- selected_L 진단 로그 (L_TRAIN / L_CLOSE) ----
-                if algo in ('aqrerm_c_l_train', 'aqrerm_c_l_close') and sim.controller is not None:
-                    L_hist = sim.controller.L_history
-                    if L_hist:
-                        total = len(L_hist)
-                        mean_L = sum(L_hist) / total
-                        counts = Counter(L_hist)
-                        dist_str = "  ".join(
-                            f"L={k}:{v:>6d}({v/total*100:5.1f}%)"
-                            for k, v in sorted(counts.items())
-                        )
-                        n_chunks = 14
-                        chunk_size = max(1, total // n_chunks)
-                        chunk_means = [
-                            float(np.mean(L_hist[i:i + chunk_size]))
-                            for i in range(0, chunk_size * n_chunks, chunk_size)
-                        ]
-                        chunks_str = " ".join(f"{m:5.2f}" for m in chunk_means)
-                        print(f"      [L stats] n={total}  mean={mean_L:.2f}  "
-                              f"min={min(L_hist)}  max={max(L_hist)}")
-                        print(f"      [L dist ] {dist_str}")
-                        print(f"      [L time ] {chunks_str}   (시간순 10등분 평균, per-routing)")
+                for algo in ALGORITHMS:
+                    label = LABELS[algo]
+                    color = COLORS[algo]
+                    print(f"\n--- {label} ---")
 
-                    # per-window 분포 (window 마다 한 번씩 기록된 L)
-                    L_w_hist = getattr(sim.controller, 'L_window_history', None)
-                    if L_w_hist:
-                        n_w = len(L_w_hist)
-                        mean_w = sum(L_w_hist) / n_w
-                        counts_w = Counter(L_w_hist)
-                        dist_w_str = "  ".join(
-                            f"L={k}:{v:>4d}({v/n_w*100:5.1f}%)"
-                            for k, v in sorted(counts_w.items())
-                        )
-                        n_chunks = 14
-                        chunk_size = max(1, n_w // n_chunks)
-                        chunk_means_w = [
-                            float(np.mean(L_w_hist[i:i + chunk_size]))
-                            for i in range(0, chunk_size * n_chunks, chunk_size)
-                        ]
-                        chunks_w_str = " ".join(f"{m:5.2f}" for m in chunk_means_w)
-                        print(f"      [Lw stat] n={n_w}  mean={mean_w:.2f}  "
-                              f"min={min(L_w_hist)}  max={max(L_w_hist)}")
-                        print(f"      [Lw dist] {dist_w_str}")
-                        print(f"      [Lw time] {chunks_w_str}   (시간순 10등분 평균, per-window)")
+                    md.write(f"#### {label}\n\n")
+                    md.write("| seed | generated | delivered | undelivered | delivery_rate |\n")
+                    md.write("|------|-----------|-----------|-------------|---------------|\n")
 
-                x_axis = np.arange(1, len(adt) + 1) * STAT_INTERVAL
-                # ax.plot(x_axis, adt, label=LABELS[algo], color=COLORS[algo], linestyle='--')
-                ax.plot(x_axis, adt, label=LABELS[algo], color=COLORS[algo])
+                    adt_runs = []
+                    for seed in SEEDS:
+                        print(f"  Running seed={seed}...")
+                        sim, adt = run_one(algo, lam, seed, scenario['cuts'])
+                        gen, dlv, und = sim.total_generated, sim.total_delivered, sim.undelivered_count
+                        rate = (dlv / gen * 100) if gen > 0 else 0.0
+                        print(f"    seed={seed:4d}  generated={gen:6d}  delivered={dlv:6d}  "
+                              f"undelivered={und:6d}  delivery_rate={rate:5.1f}%")
+                        md.write(f"| {seed} | {gen} | {dlv} | {und} | {rate:.1f}% |\n")
+                        adt_runs.append(adt)
 
-            md_file.write("\n")
-            ax.axvline(x=CUT_TICK, color='red', linestyle='--', linewidth=1.5, label='Link cut')
-            ax.set_title(f"λ={lam} — Cut {scenario['name']}")
-            ax.set_xlabel('Simulator Time')
-            ax.set_ylabel('Average Delivery Time')
-            ax.legend()
-            ax.grid(True, alpha=0.3)
+                    # ---- 시드별 시리즈를 (n_seeds, n_windows) 배열로 쌓고 백분위수 계산 ----
+                    # 전달 패킷이 0인 통계 구간은 simulator 가 NaN 을 넣으므로,
+                    # 그 시드 자리만 제외하고 나머지 시드로 집계하는 nan 무시 함수를 사용
+                    adt_arr = np.array(adt_runs)
+                    median = np.nanmedian(adt_arr, axis=0)
+                    q25 = np.nanpercentile(adt_arr, 25, axis=0)
+                    q75 = np.nanpercentile(adt_arr, 75, axis=0)
+
+                    # ---- median 굵은 실선 + IQR 음영 ----
+                    ax.plot(x_axis, median, label=label, color=color, linewidth=2.0)
+                    ax.fill_between(x_axis, q25, q75, color=color, alpha=0.2)
+
+                    # ---- 절단 전/후 SS ADT 요약 ----
+                    cut_window = CUT_TICK // STAT_INTERVAL
+                    pre  = adt_arr[:, :cut_window]
+                    post = adt_arr[:, cut_window:]
+                    ss_pre  = np.nanmean(pre, axis=1)  if pre.shape[1]  > 0 else np.array([0.0])
+                    ss_post = np.nanmean(post, axis=1) if post.shape[1] > 0 else np.array([0.0])
+                    print(f"    [SS pre ] median={float(np.nanmedian(ss_pre)):6.2f}  "
+                          f"IQR=[{float(np.nanpercentile(ss_pre, 25)):6.2f}, "
+                          f"{float(np.nanpercentile(ss_pre, 75)):6.2f}]")
+                    print(f"    [SS post] median={float(np.nanmedian(ss_post)):6.2f}  "
+                          f"IQR=[{float(np.nanpercentile(ss_post, 25)):6.2f}, "
+                          f"{float(np.nanpercentile(ss_post, 75)):6.2f}]")
+                    md.write(f"\n- Pre-cut ADT median={float(np.nanmedian(ss_pre)):.2f}  "
+                             f"IQR=[{float(np.nanpercentile(ss_pre, 25)):.2f}, "
+                             f"{float(np.nanpercentile(ss_pre, 75)):.2f}]\n")
+                    md.write(f"- Post-cut ADT median={float(np.nanmedian(ss_post)):.2f}  "
+                             f"IQR=[{float(np.nanpercentile(ss_post, 25)):.2f}, "
+                             f"{float(np.nanpercentile(ss_post, 75)):.2f}]\n\n")
+
+                # ---- 절단 시점 수직선 + 라벨 ----
+                ax.axvline(x=CUT_TICK, color='red', linestyle='--', linewidth=1.5, label='Link cut')
+                ax.set_title(f"λ={lam} — Cut {scenario['name']}")
+                ax.set_xlabel('Simulator Time')
+                ax.set_ylabel('Average Delivery Time')
+                ax.legend(loc='best', fontsize=9)
+                ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    filename = f"result_link_cut_c_{c}.png"
+    filename = 'result_link_cut.png'
     plt.savefig(filename, dpi=150)
-    print(f"결과 저장: {filename}")
+    print(f"\n결과 저장: {filename}")
     plt.close()
 
+    print(f"\n로그: {MD_PATH}")
 
-if __name__ == '__main__':
-    with open(MD_PATH, 'w', encoding='utf-8') as md:
-        md.write('# Link cut c-sweep (6x6 Grid)\n\n')
-        for c in C_VALUES:
-            run_one_c(c, md)
-    print(f"\n모든 c-sweep 완료. 로그: {MD_PATH}")
+
+# =====================================================================
+# [실행 블록 — 이번 연구 마감 범위 제외]
+# 링크 절단 시나리오 실험을 비활성화합니다. 재활성화 시 아래 주석을 해제하고
+# simulator.py 내 링크 절단 관련 주석 처리 구간도 함께 해제하십시오.
+# =====================================================================
+# if __name__ == '__main__':
+#     run_all()

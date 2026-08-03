@@ -66,21 +66,20 @@ SEEDS = list(range(100, 1001, 100))  # [100, 200, ..., 1000]
 STAT_INTERVAL = 100
 
 EXPERIMENTS = [
-    # 저, 중부하
-    # {'lam': 2.5, 'total_ticks': 20000},
-    # {'lam': 3.0, 'total_ticks': 20000},
-    # {'lam': 3.5, 'total_ticks': 20000},
-
-    # 고부하
-    {'lam': 3.7, 'total_ticks': 20000},
-    {'lam': 3.9, 'total_ticks': 20000},
-    {'lam': 4.1, 'total_ticks': 20000},
+    # 4 단계 부하 — 저 / 중저 / 중고 / 고. 모든 실험 공통.
+    # 고부하 상한을 3.8 로 둔 이유 : AQRERM 은 발산하고 AQPRICE 는 정착하는 경계 지점.
+    # {'lam': 2.5, 'total_ticks': 20000},   # 저부하
+    # {'lam': 3.0, 'total_ticks': 20000},   # 중저부하
+    # {'lam': 3.5, 'total_ticks': 20000},   # 중고부하
+    # {'lam': 3.8, 'total_ticks': 20000},   # 고부하
+    {'lam': 3.8, 'total_ticks': 100000},   # 고부하 + 특별실험
 ]
 
 # 파일명 태그: (토폴로지, 부하, 틱수). 토폴로지·틱수는 자동, 부하 태그는 수동.
 TOPO_TAG   = {36: 'GRID', 14: 'NSFNET', 15: 'PQ'}.get(GRID_NUM_NODES, f'{GRID_NUM_NODES}N')
 # RESULT_TAG = 'LOW'   # 부하 표기 (수동): LOW / HIGH 등
-RESULT_TAG = 'HIGH'   # 부하 표기 (수동): LOW / HIGH 등
+# RESULT_TAG = 'HIGH'   # 부하 표기 (수동): LOW / HIGH 등
+RESULT_TAG = '3.8'   # 부하 표기 (수동): LOW / HIGH 등
 _BASENAME  = f'result_lineage({TOPO_TAG},{RESULT_TAG},{EXPERIMENTS[0]["total_ticks"]})'
 MD_PATH       = f'{_BASENAME}.md'
 PNG_PATH      = f'{_BASENAME}.png'
@@ -102,8 +101,8 @@ def run_one(algo, lam, total_ticks, seed):
 # 메인: 각 부하별로 알고리즘들을 10 시드씩 돌려 median + IQR 시각화
 # -------------------------------------------------------------------------
 def run_all():
-    fig, axes = plt.subplots(1, len(EXPERIMENTS), figsize=(20 * len(EXPERIMENTS), 12), squeeze=False)
-    axes = axes.flatten()  # EXPERIMENTS 가 1 개여도 1D 배열로 유지
+    # 패널 배치 — 부하 4개면 2x2. 패널 하나당 크기가 고정이라 실험 수가 달라져도 비율 유지.
+    fig, axes = diag.make_panel_grid(len(EXPERIMENTS))
     active_labels = ' / '.join(LABELS[a] for a in ALGORITHMS)
     fig.suptitle(
         f"{topo_name(GRID_NUM_NODES)} — {active_labels} "
@@ -142,6 +141,7 @@ def run_all():
                 switch_rates = []
                 rx_runs, echo_runs, switch_runs, link_dicts = [], [], [], []
                 te_runs, tm_runs = [], []          # R_x 의 분자·분모 시계열
+                gens, dlvs, unds, rates = [], [], [], []   # 패킷 전달 통계 평균용
                 for seed in SEEDS:
                     print(f"  Running seed={seed}...")
                     sim, adt = run_one(algo, lam, total_ticks, seed)
@@ -150,6 +150,7 @@ def run_all():
                     print(f"    seed={seed:4d}  generated={gen:6d}  delivered={dlv:6d}  "
                           f"undelivered={und:6d}  delivery_rate={rate:5.1f}%")
                     md.write(f"| {seed} | {gen} | {dlv} | {und} | {rate:.1f}% |\n")
+                    gens.append(gen); dlvs.append(dlv); unds.append(und); rates.append(rate)
                     adt_runs.append(adt)
                     ec = (sim.total_echo_queries / sim.total_route_calls
                           if sim.total_route_calls > 0 else 0.0)
@@ -163,6 +164,13 @@ def run_all():
                     echo_runs.append(sim.echo_per_decision_series)
                     switch_runs.append(sim.switch_rate_series)
                     link_dicts.append(sim.link_usage)
+
+                # 시드 표 끝에 평균 행 — 다른 비교 스크립트의 '패킷 전달 통계' 와 같은 항목.
+                # 성공률은 시드별 비율의 평균이며, 최고·최저를 함께 적어 특정 시드의 붕괴를 확인한다.
+                md.write(f"| 평균 | {np.mean(gens):.0f} | {np.mean(dlvs):.0f} | "
+                         f"{np.mean(unds):.0f} | {np.mean(rates):.1f}% |\n")
+                md.write(f"| 최고/최저 성공률 | - | - | - | "
+                         f"{np.max(rates):.1f}% / {np.min(rates):.1f}% |\n")
 
                 # ---- 시드별 시리즈를 (n_seeds, n_windows) 배열로 쌓고 백분위수 계산 ----
                 # 전달 패킷이 0인 통계 구간은 simulator 가 NaN 을 넣으므로,
@@ -198,12 +206,12 @@ def run_all():
                       f"에코={echo_cost:.2f} 변경률={switch_rate * 100:.1f}% R_x={rx_overall:.3f}")
                 md.write(f"\n- 전체 평균 ADT (중앙값 실선의 시간평균 // 단위 = 틱) : {overall_adt:.2f}\n")
                 md.write(f"- 전체 IQR 폭 (띠 평균 폭 // 단위 = 틱) : {overall_iqr:.2f}\n")
-                md.write(f"- 결정당 에코 이웃 수 (전체 평균 // 단위 = 개/결정) : {echo_cost:.2f}\n")
+                md.write(f"- 결정당 이웃 정보 조회 수 (전체 평균 // 단위 = 개/결정) : {echo_cost:.2f}\n")
                 md.write(f"- 경로 변경률 (전체 평균 // 단위 = %) : {switch_rate * 100:.1f}%\n")
                 md.write(f"- R_x (전체 평균, 혼잡 신호 // 단위 없음, 0~1 비율) : {rx_overall:.3f}\n")
-                # R_x 의 분자·분모. T_est 는 전체구간 평균, T_max 는 단조 증가라 최종값.
+                # R_x 의 분자·분모. 둘 다 전체구간 시간평균 (R_x 와 같은 요약 규칙).
                 md.write(f"- T_est (전체 평균, R_x 분자 // 단위 = 틱) : {diag.series_overall(te_med):.2f}\n")
-                md.write(f"- T_max (최종값, R_x 분모 // 단위 = 틱) : {diag.series_final(tm_med):.2f}\n\n")
+                md.write(f"- T_max (전체 평균, R_x 분모 // 단위 = 틱) : {diag.series_overall(tm_med):.2f}\n\n")
 
                 # 진단 시계열 (구간 평균 + 전체 평균) + 링크 사용량 수치
                 diag.write_diag_series_md(md, label,

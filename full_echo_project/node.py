@@ -64,7 +64,7 @@ class Node:
         # 에코 비용 진단 — 실행 전체 누적 (리셋 없음). simulator 가 종료 시 합산해 노출.
         # echo_query_count = 이웃에게 전달시간 추정을 조회한 총 횟수 (best_estimate 호출 수)
         # route_call_count = 이 노드가 라우팅 결정을 내린 총 횟수
-        # 결정당 에코 이웃 수 = 전체 echo_query_count 합 / 전체 route_call_count 합
+        # 결정당 이웃 정보 조회 수 = 전체 echo_query_count 합 / 전체 route_call_count 합
         self.echo_query_count = 0
         self.route_call_count = 0
 

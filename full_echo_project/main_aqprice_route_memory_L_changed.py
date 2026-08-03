@@ -5,7 +5,7 @@
 #   L=1/2/3 : 최근 방문 노드를 각각 1/2/3 개까지 다음 홉 후보에서 제외
 # - node.py 는 aqprice_L 로 이 길이를 제어 (기본 0)
 # - 6x6 grid, 10 시드, λ=3.8 만 (40000 tick). 지표표 + 그래프 생산
-# - 4 지표: 전체 평균 ADT / 전체 IQR 폭 / 결정당 에코 이웃 수 / 경로 변경률 (구간 분할 없음)
+# - 4 지표: 전체 평균 ADT / 전체 IQR 폭 / 결정당 이웃 정보 조회 수 / 경로 변경률 (구간 분할 없음)
 # - 산출물: result_aqprice_route_memory_L_changed.md / .png
 # =============================================================================
 import random
@@ -60,15 +60,12 @@ STAT_INTERVAL = 100
 
 # λ=3.8 만, 20000 tick
 EXPERIMENTS = [
-    # 저, 중부하
-    {'lam': 2.5, 'total_ticks': 20000},
-    {'lam': 3.0, 'total_ticks': 20000},
-    {'lam': 3.5, 'total_ticks': 20000},
-
-    # 고부하
-    # {'lam': 3.8, 'total_ticks': 20000},
-    # {'lam': 4.0, 'total_ticks': 20000},
-    # {'lam': 4.4, 'total_ticks': 20000},
+    # 4 단계 부하 — 저 / 중저 / 중고 / 고. 모든 실험 공통.
+    # 고부하 상한을 3.8 로 둔 이유 : AQRERM 은 발산하고 AQPRICE 는 정착하는 경계 지점.
+    {'lam': 2.5, 'total_ticks': 20000},   # 저부하
+    {'lam': 3.0, 'total_ticks': 20000},   # 중저부하
+    {'lam': 3.5, 'total_ticks': 20000},   # 중고부하
+    {'lam': 3.8, 'total_ticks': 20000},   # 고부하
 ]
 
 # 파일명 태그: (토폴로지, 부하, 틱수). 토폴로지·틱수는 자동, 부하 태그는 수동.
@@ -233,7 +230,7 @@ def run_lambda(ax, lam, total_ticks, md):
         md.write(row_d("전체 IQR 폭 (띠 평균 폭 // 단위 = 틱)",
                        lambda v: f"{metrics[v]['overall_iqr']:.2f}",
                        f"{m_alt['overall_iqr'] - m_ref['overall_iqr']:+.2f}"))
-        md.write(row_d("결정당 에코 이웃 수 (전체 평균 // 단위 = 개/결정)",
+        md.write(row_d("결정당 이웃 정보 조회 수 (전체 평균 // 단위 = 개/결정)",
                        lambda v: f"{results[v]['echo_cost']:.2f}",
                        f"{r_alt['echo_cost'] - r_ref['echo_cost']:+.2f}"))
         # 경로 변경률은 비율이라 백분율로, 차이는 두 백분율의 차이이므로 %p 로 적는다.
@@ -246,28 +243,28 @@ def run_lambda(ax, lam, total_ticks, md):
         md.write(row_d("R_x (전체 평균, 혼잡 신호 // 단위 없음, 0~1 비율)",
                        lambda v: f"{diag.series_overall(results[v]['rx_med']):.3f}",
                        f"{rx_alt - rx_ref:+.3f}"))
-        # R_x 의 분자·분모. T_est 는 전체구간 평균, T_max 는 단조 증가라 최종값.
+        # R_x 의 분자·분모. 둘 다 전체구간 시간평균 (R_x 와 같은 요약 규칙).
         te_ref, te_alt = diag.series_overall(r_ref['t_est_med']), diag.series_overall(r_alt['t_est_med'])
-        tm_ref, tm_alt = diag.series_final(r_ref['t_max_med']),   diag.series_final(r_alt['t_max_med'])
+        tm_ref, tm_alt = diag.series_overall(r_ref['t_max_med']),   diag.series_overall(r_alt['t_max_med'])
         md.write(row_d("T_est (전체 평균, R_x 분자 // 단위 = 틱)",
                        lambda v: f"{diag.series_overall(results[v]['t_est_med']):.2f}",
                        f"{te_alt - te_ref:+.2f}"))
-        md.write(row_d("T_max (최종값, R_x 분모 // 단위 = 틱)",
-                       lambda v: f"{diag.series_final(results[v]['t_max_med']):.2f}",
+        md.write(row_d("T_max (전체 평균, R_x 분모 // 단위 = 틱)",
+                       lambda v: f"{diag.series_overall(results[v]['t_max_med']):.2f}",
                        f"{tm_alt - tm_ref:+.2f}"))
     else:
         md.write(f"| 지표 | {cols} |\n")
         md.write(align)
         md.write(row("전체 평균 ADT (중앙값 실선의 시간평균 // 단위 = 틱)", lambda v: f"{metrics[v]['overall']:.2f}"))
         md.write(row("전체 IQR 폭 (띠 평균 폭 // 단위 = 틱)",              lambda v: f"{metrics[v]['overall_iqr']:.2f}"))
-        md.write(row("결정당 에코 이웃 수 (전체 평균 // 단위 = 개/결정)", lambda v: f"{results[v]['echo_cost']:.2f}"))
+        md.write(row("결정당 이웃 정보 조회 수 (전체 평균 // 단위 = 개/결정)", lambda v: f"{results[v]['echo_cost']:.2f}"))
         md.write(row("경로 변경률 (전체 평균 // 단위 = %)",        lambda v: f"{results[v]['switch_rate'] * 100:.1f}%"))
         md.write(row("R_x (전체 평균, 혼잡 신호 // 단위 없음, 0~1 비율)",
                      lambda v: f"{diag.series_overall(results[v]['rx_med']):.3f}"))
         md.write(row("T_est (전체 평균, R_x 분자 // 단위 = 틱)",
                      lambda v: f"{diag.series_overall(results[v]['t_est_med']):.2f}"))
-        md.write(row("T_max (최종값, R_x 분모 // 단위 = 틱)",
-                     lambda v: f"{diag.series_final(results[v]['t_max_med']):.2f}"))
+        md.write(row("T_max (전체 평균, R_x 분모 // 단위 = 틱)",
+                     lambda v: f"{diag.series_overall(results[v]['t_max_med']):.2f}"))
     md.write("\n")
 
     # ---- MD 진단 시계열 (변형별 구간 평균 + 전체 평균) ----
@@ -317,9 +314,8 @@ def run_lambda(ax, lam, total_ticks, md):
 # 메인
 # -------------------------------------------------------------------------
 def run_all():
-    # 패널 하나당 크기를 항상 동일하게 (20폭 × 패널수). 패널이 1개든 여러개든 각 패널 비율 유지.
-    fig, axes = plt.subplots(1, len(EXPERIMENTS), figsize=(20 * len(EXPERIMENTS), 12), squeeze=False)
-    axes = axes.flatten()
+    # 패널 배치 — 부하 4개면 2x2. 패널 하나당 크기가 고정이라 실험 수가 달라져도 비율 유지.
+    fig, axes = diag.make_panel_grid(len(EXPERIMENTS))
     fig.suptitle(
         f"{topo_name(GRID_NUM_NODES)} — AQPRICE Route Memory length compare (L=0/1/2/3)  "
         f"(c={C}, seeds n={len(SEEDS)})",
@@ -343,7 +339,7 @@ def run_all():
             md.write(f'- 개선/차이 열 : 기준은 {LABELS_SHORT[REF_KEY]}, 비교 대상은 {LABELS_SHORT[_alt]}. '
                      f'ADT 는 % 개선(양수면 {LABELS_SHORT[_alt]} 가 더 빠름), '
                      f'IQR 폭·에코·변경률은 절대 차이({LABELS_SHORT[_alt]} − {LABELS_SHORT[REF_KEY]}).\n')
-        md.write('- 진단 시계열 : R_x / 결정당 에코 이웃 수 / 경로 변경률 구간 평균 + 끝의 전체 평균(에코·변경률 요약).\n')
+        md.write('- 진단 시계열 : R_x / 결정당 이웃 정보 조회 수 / 경로 변경률 구간 평균 + 끝의 전체 평균(에코·변경률 요약).\n')
         md.write('- 링크 사용량 : 별도 PNG 에 grid 링크 굵기·색 + md 통과량 표.\n\n')
 
         diag.write_metric_guide_md(md)

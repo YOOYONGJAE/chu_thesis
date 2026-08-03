@@ -73,15 +73,12 @@ PNG_PATH      = f'{_BASENAME}.png'
 LINK_PNG_PATH = f'{_BASENAME}_linkuse.png'
 
 EXPERIMENTS = [
-    # 저, 중부하
-    {'lam': 2.5, 'total_ticks': 20000},
-    {'lam': 3.0, 'total_ticks': 20000},
-    {'lam': 3.5, 'total_ticks': 20000},
-
-    # 고부하
-    # {'lam': 3.7, 'total_ticks': 20000},
-    # {'lam': 3.9, 'total_ticks': 20000},
-    # {'lam': 4.1, 'total_ticks': 20000},
+    # 4 단계 부하 — 저 / 중저 / 중고 / 고. 모든 실험 공통.
+    # 고부하 상한을 3.8 로 둔 이유 : AQRERM 은 발산하고 AQPRICE 는 정착하는 경계 지점.
+    {'lam': 2.5, 'total_ticks': 20000},   # 저부하
+    {'lam': 3.0, 'total_ticks': 20000},   # 중저부하
+    {'lam': 3.5, 'total_ticks': 20000},   # 중고부하
+    {'lam': 3.8, 'total_ticks': 20000},   # 고부하
 ]
 
 
@@ -222,18 +219,18 @@ def run_lambda(ax, lam, total_ticks, md):
     md.write(f"| 전체 IQR 폭 (띠 평균 폭, 작을수록 일관 // 단위 = 틱) | {base_m['overall_iqr']:.2f} | {main_m['overall_iqr']:.2f} | {main_m['overall_iqr'] - base_m['overall_iqr']:+.2f} |\n")
     # 진단 시계열 전체 평균 중 비교 지표(에코·변경률)를 위 표에도 함께. R_x 는 시계열에만.
     br, mr = results[BASE_KEY], results[MAIN_KEY]
-    md.write(f"| 결정당 에코 이웃 수 (전체 평균 // 단위 = 개/결정) | {br['echo_cost']:.2f} | {mr['echo_cost']:.2f} | {mr['echo_cost'] - br['echo_cost']:+.2f} |\n")
+    md.write(f"| 결정당 이웃 정보 조회 수 (전체 평균 // 단위 = 개/결정) | {br['echo_cost']:.2f} | {mr['echo_cost']:.2f} | {mr['echo_cost'] - br['echo_cost']:+.2f} |\n")
     # 경로 변경률은 비율이라 백분율로, 차이는 두 백분율의 차이이므로 %p 로 적는다.
     md.write(f"| 경로 변경률 (전체 평균 // 단위 = %) | {br['switch_rate'] * 100:.1f}% | {mr['switch_rate'] * 100:.1f}% | "
              f"{(mr['switch_rate'] - br['switch_rate']) * 100:+.1f}%p |\n")
     # R_x 는 진단 시계열의 전체구간 평균 (아래 시계열 표의 '전체 평균' 과 같은 값)
     br_rx, mr_rx = diag.series_overall(br['rx_med']), diag.series_overall(mr['rx_med'])
     md.write(f"| R_x (전체 평균, 혼잡 신호 // 단위 없음, 0~1 비율) | {br_rx:.3f} | {mr_rx:.3f} | {mr_rx - br_rx:+.3f} |\n")
-    # R_x 의 분자·분모. T_est 는 전체구간 평균, T_max 는 단조 증가라 최종값.
+    # R_x 의 분자·분모. 둘 다 전체구간 시간평균 (R_x 와 같은 요약 규칙).
     br_te, mr_te = diag.series_overall(br['t_est_med']), diag.series_overall(mr['t_est_med'])
-    br_tm, mr_tm = diag.series_final(br['t_max_med']),   diag.series_final(mr['t_max_med'])
+    br_tm, mr_tm = diag.series_overall(br['t_max_med']),   diag.series_overall(mr['t_max_med'])
     md.write(f"| T_est (전체 평균, R_x 분자 // 단위 = 틱) | {br_te:.2f} | {mr_te:.2f} | {mr_te - br_te:+.2f} |\n")
-    md.write(f"| T_max (최종값, R_x 분모 // 단위 = 틱) | {br_tm:.2f} | {mr_tm:.2f} | {mr_tm - br_tm:+.2f} |\n\n")
+    md.write(f"| T_max (전체 평균, R_x 분모 // 단위 = 틱) | {br_tm:.2f} | {mr_tm:.2f} | {mr_tm - br_tm:+.2f} |\n\n")
 
     # ---- 진단 시계열 (변형별 구간 평균 + 전체 평균). 에코·변경률 요약이 여기 들어감 ----
     for variant in VARIANTS:
@@ -273,8 +270,8 @@ def run_lambda(ax, lam, total_ticks, md):
 # 메인
 # -------------------------------------------------------------------------
 def run_all():
-    fig, axes = plt.subplots(1, len(EXPERIMENTS), figsize=(20 * len(EXPERIMENTS), 12), squeeze=False)
-    axes = axes.flatten()
+    # 패널 배치 — 부하 4개면 2x2. 패널 하나당 크기가 고정이라 실험 수가 달라져도 비율 유지.
+    fig, axes = diag.make_panel_grid(len(EXPERIMENTS))
     fig.suptitle(
         f"{topo_name(GRID_NUM_NODES)} — AQPRICE Inline Echo on/off (post-echo / inline)  "
         f"(c={C}, seeds n={len(SEEDS)}, {TOTAL_TICKS}tick)",
@@ -294,7 +291,7 @@ def run_all():
         md.write('  inline(현재)은 에코 먼저 → 최신값으로 선택. postecho 는 기존 Q + 이전 큐캐시로 먼저 선택 → 그 뒤 에코(AQFE/AQRERM 식).\n')
         md.write('  포인트·c·라우트메모리·요청노드 제외는 두 변형 모두 동일 → 차이는 오직 에코-선택 순서에서 온다.\n\n')
         md.write('- 성능 비교표 : 전체 평균 ADT(그래프 중앙값 실선의 시간평균)와 전체 IQR 폭(그래프 띠의 평균 폭, 작을수록 일관). 구간 분할 없이 실행 전체를 요약.\n')
-        md.write('- 진단 시계열 : R_x(=T_est/T_max) / 결정당 에코 이웃 수 / 경로 변경률 을 구간 평균으로. '
+        md.write('- 진단 시계열 : R_x(=T_est/T_max) / 결정당 이웃 정보 조회 수 / 경로 변경률 을 구간 평균으로. '
                  '끝의 전체 평균이 에코·변경률의 요약값(총합 기준).\n')
         md.write('- 링크 사용량 : 별도 PNG 에 grid 링크 굵기(점선) + 통과량 정렬 리스트.\n\n')
 

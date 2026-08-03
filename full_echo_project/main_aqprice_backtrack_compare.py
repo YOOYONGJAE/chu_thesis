@@ -5,7 +5,7 @@
 #   L1  : L=1, 요청노드 제외 (aqprice_L=1, exclude=True)        → 라우트 메모리로 직전 노드 방지
 # - node.py 의 aqprice_L / aqprice_exclude_requester 두 토글을 변형별로 조합
 # - 6x6 grid, 10 시드, λ=2/3.5/3.8 (20000 tick). 지표표 + 그래프 생산
-# - 4 지표: 전체 평균 ADT / 전체 IQR 폭 / 결정당 에코 이웃 수 / 경로 변경률 (구간 분할 없음)
+# - 4 지표: 전체 평균 ADT / 전체 IQR 폭 / 결정당 이웃 정보 조회 수 / 경로 변경률 (구간 분할 없음)
 # - 산출물: result_aqprice_backtrack_compare.md / .png
 # =============================================================================
 import random
@@ -75,9 +75,12 @@ PNG_PATH      = f'{_BASENAME}.png'
 LINK_PNG_PATH = f'{_BASENAME}_linkuse.png'
 
 EXPERIMENTS = [
-    {'lam': 2, 'total_ticks': TOTAL_TICKS},
-    {'lam': 3.5, 'total_ticks': TOTAL_TICKS},
-    {'lam': 3.8, 'total_ticks': TOTAL_TICKS},
+    # 4 단계 부하 — 저 / 중저 / 중고 / 고. 모든 실험 공통.
+    # 고부하 상한을 3.8 로 둔 이유 : AQRERM 은 발산하고 AQPRICE 는 정착하는 경계 지점.
+    {'lam': 2.5, 'total_ticks': 20000},   # 저부하
+    {'lam': 3.0, 'total_ticks': 20000},   # 중저부하
+    {'lam': 3.5, 'total_ticks': 20000},   # 중고부하
+    {'lam': 3.8, 'total_ticks': 20000},   # 고부하
 ]
 
 
@@ -204,17 +207,17 @@ def run_lambda(ax, lam, total_ticks, md):
     md.write(align)
     md.write(row("전체 평균 ADT (중앙값 실선의 시간평균 // 단위 = 틱)", lambda v: f"{metrics[v]['overall']:.2f}"))
     md.write(row("전체 IQR 폭 (띠 평균 폭 // 단위 = 틱)",              lambda v: f"{metrics[v]['overall_iqr']:.2f}"))
-    md.write(row("결정당 에코 이웃 수 (전체 평균 // 단위 = 개/결정)", lambda v: f"{results[v]['echo_cost']:.2f}"))
+    md.write(row("결정당 이웃 정보 조회 수 (전체 평균 // 단위 = 개/결정)", lambda v: f"{results[v]['echo_cost']:.2f}"))
     # 경로 변경률은 비율이라 백분율로 적는다.
     md.write(row("경로 변경률 (전체 평균 // 단위 = %)",        lambda v: f"{results[v]['switch_rate'] * 100:.1f}%"))
     # R_x 는 진단 시계열의 전체구간 평균 (아래 시계열 표의 '전체 평균' 과 같은 값)
     md.write(row("R_x (전체 평균, 혼잡 신호 // 단위 없음, 0~1 비율)",
                  lambda v: f"{diag.series_overall(results[v]['rx_med']):.3f}"))
-    # R_x 의 분자·분모. T_est 는 전체구간 평균, T_max 는 단조 증가라 최종값.
+    # R_x 의 분자·분모. 둘 다 전체구간 시간평균 (R_x 와 같은 요약 규칙).
     md.write(row("T_est (전체 평균, R_x 분자 // 단위 = 틱)",
                  lambda v: f"{diag.series_overall(results[v]['t_est_med']):.2f}"))
-    md.write(row("T_max (최종값, R_x 분모 // 단위 = 틱)",
-                 lambda v: f"{diag.series_final(results[v]['t_max_med']):.2f}"))
+    md.write(row("T_max (전체 평균, R_x 분모 // 단위 = 틱)",
+                 lambda v: f"{diag.series_overall(results[v]['t_max_med']):.2f}"))
     md.write("\n")
 
     # ---- MD 진단 시계열 (변형별 구간 평균 + 전체 평균) ----
@@ -262,8 +265,8 @@ def run_lambda(ax, lam, total_ticks, md):
 # 메인
 # -------------------------------------------------------------------------
 def run_all():
-    fig, axes = plt.subplots(1, len(EXPERIMENTS), figsize=(20 * len(EXPERIMENTS), 12), squeeze=False)
-    axes = axes.flatten()
+    # 패널 배치 — 부하 4개면 2x2. 패널 하나당 크기가 고정이라 실험 수가 달라져도 비율 유지.
+    fig, axes = diag.make_panel_grid(len(EXPERIMENTS))
     fig.suptitle(
         f"{topo_name(GRID_NUM_NODES)} — AQPRICE backtrack-guard compare (L0 included / L0 excluded / L1)  "
         f"(c={C}, seeds n={len(SEEDS)}, {TOTAL_TICKS}tick)",
@@ -286,7 +289,7 @@ def run_all():
         md.write('  inc(L0 포함) : 아무 방지 없음. exc(L0 제외/현재) : 이웃이 최소 Q 낼 때 질문자를 뺌(추정값 단계).\n')
         md.write('  L1 : 라우트 메모리로 직전 노드를 다음 홉 후보에서 뺌(선택 단계). L1 은 요청노드 제외도 유지.\n\n')
         md.write('- 성능 비교표 : 전체 평균 ADT(그래프 중앙값 실선의 시간평균)와 전체 IQR 폭(그래프 띠의 평균 폭). 구간 분할 없이 실행 전체를 요약.\n')
-        md.write('- 진단 시계열 : R_x / 결정당 에코 이웃 수 / 경로 변경률 구간 평균 + 끝의 전체 평균(에코·변경률 요약).\n')
+        md.write('- 진단 시계열 : R_x / 결정당 이웃 정보 조회 수 / 경로 변경률 구간 평균 + 끝의 전체 평균(에코·변경률 요약).\n')
         md.write('- 링크 사용량 : 별도 PNG 에 grid 링크 굵기·색 + md 통과량 표.\n\n')
 
         diag.write_metric_guide_md(md)
