@@ -14,8 +14,9 @@ plt.rcParams['font.family'] = 'Malgun Gothic'   # Windows 한글 폰트 (그래�
 plt.rcParams['axes.unicode_minus'] = False       # 마이너스 기호 깨짐 방지
 from simulator import Simulator
 import diagnostics as diag
-from topology_grid import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACENCY
-# from topology_nsfnet import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACENCY
+# from topology_grid import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACENCY
+from topology_nsfnet import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACENCY
+# from topology_pq import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACENCY
 
 # -------------------------------------------------------------------------
 # 파라미터 설정
@@ -70,16 +71,22 @@ EXPERIMENTS = [
     # 고부하 상한을 3.8 로 둔 이유 : AQRERM 은 발산하고 AQPRICE 는 정착하는 경계 지점.
     # {'lam': 2.5, 'total_ticks': 20000},   # 저부하
     # {'lam': 3.0, 'total_ticks': 20000},   # 중저부하
-    # {'lam': 3.5, 'total_ticks': 20000},   # 중고부하
-    # {'lam': 3.8, 'total_ticks': 20000},   # 고부하
-    {'lam': 3.8, 'total_ticks': 100000},   # 고부하 + 특별실험
+    # {'lam': 3.1, 'total_ticks': 20000},   # 중저부하
+    # {'lam': 3.3, 'total_ticks': 20000},   # 중고부하
+    # {'lam': 3.4, 'total_ticks': 20000},   # 중고부하
+    # {'lam': 3.2, 'total_ticks': 20000},   # 중고부하
+    {'lam': 3.5, 'total_ticks': 20000},   # 중고부하
+    {'lam': 3.8, 'total_ticks': 20000},   # 고부하
+    {'lam': 4.1, 'total_ticks': 20000},   # 중부하
+    {'lam': 4.4, 'total_ticks': 20000},   # 중부하
+    # {'lam': 3.8, 'total_ticks': 100000},   # 고부하 + 특별실험
 ]
 
 # 파일명 태그: (토폴로지, 부하, 틱수). 토폴로지·틱수는 자동, 부하 태그는 수동.
 TOPO_TAG   = {36: 'GRID', 14: 'NSFNET', 15: 'PQ'}.get(GRID_NUM_NODES, f'{GRID_NUM_NODES}N')
 # RESULT_TAG = 'LOW'   # 부하 표기 (수동): LOW / HIGH 등
 # RESULT_TAG = 'HIGH'   # 부하 표기 (수동): LOW / HIGH 등
-RESULT_TAG = '3.8'   # 부하 표기 (수동): LOW / HIGH 등
+RESULT_TAG = '4LVL'   # 부하 표기 (수동): LOW / HIGH 등
 _BASENAME  = f'result_lineage({TOPO_TAG},{RESULT_TAG},{EXPERIMENTS[0]["total_ticks"]})'
 MD_PATH       = f'{_BASENAME}.md'
 PNG_PATH      = f'{_BASENAME}.png'
@@ -110,7 +117,7 @@ def run_all():
     )
 
     with open(MD_PATH, 'w', encoding='utf-8') as md:
-        md.write('# 6x6 Grid Algorithm comparison (seed sweep)\n\n')
+        md.write(f'# {topo_name(GRID_NUM_NODES)} Algorithm comparison (seed sweep)\n\n')
         md.write(f'- Seeds: {SEEDS}\n')
         md.write(f'- Algorithms: {[LABELS[a] for a in ALGORITHMS]}\n')
         md.write(f'- BASE_PARAMS: {BASE_PARAMS}\n\n')
@@ -206,7 +213,7 @@ def run_all():
                       f"에코={echo_cost:.2f} 변경률={switch_rate * 100:.1f}% R_x={rx_overall:.3f}")
                 md.write(f"\n- 전체 평균 ADT (중앙값 실선의 시간평균 // 단위 = 틱) : {overall_adt:.2f}\n")
                 md.write(f"- 전체 IQR 폭 (띠 평균 폭 // 단위 = 틱) : {overall_iqr:.2f}\n")
-                md.write(f"- 결정당 이웃 정보 조회 수 (전체 평균 // 단위 = 개/결정) : {echo_cost:.2f}\n")
+                md.write(f"- 라우팅 결정당 이웃 조회 수 (전체 평균 // 단위 = 개/결정) : {echo_cost:.2f}\n")
                 md.write(f"- 경로 변경률 (전체 평균 // 단위 = %) : {switch_rate * 100:.1f}%\n")
                 md.write(f"- R_x (전체 평균, 혼잡 신호 // 단위 없음, 0~1 비율) : {rx_overall:.3f}\n")
                 # R_x 의 분자·분모. 둘 다 전체구간 시간평균 (R_x 와 같은 요약 규칙).
@@ -219,7 +226,8 @@ def run_all():
                                           diag.median_series(echo_runs),
                                           diag.median_series(switch_runs),
                                           echo_cost, switch_rate,
-                                          t_est_med=te_med, t_max_med=tm_med)
+                                          t_est_med=te_med, t_max_med=tm_med,
+                                          stat_interval=STAT_INTERVAL)
                 link_sum = diag.sum_link_usage(link_dicts)
                 md.write(f"#### 링크 사용량 ({label}, 통과량 순, 시드 합)\n\n")
                 md.write(diag.link_usage_md(link_sum))

@@ -43,7 +43,7 @@ TOPOLOGY_GRID = {'num_nodes': GRID_NUM_NODES, 'adjacency': GRID_ADJACENCY}
 #   inline   : 에코 먼저 → 최신값으로 선택 (aqprice_inline=True, 현재 기본)
 # -------------------------------------------------------------------------
 VARIANTS = ['postecho', 'inline']   # 표/그래프 순서: baseline(post) → main(inline=현재)
-BASE_KEY = 'postecho'               # 개선 계산의 기준(baseline)
+BASE_KEY = 'postecho'               # 차이 계산의 기준(baseline)
 MAIN_KEY = 'inline'                 # 현재 AQPRICE 기본
 VARIANT_INLINE = {'postecho': False, 'inline': True}
 LABELS = {
@@ -110,13 +110,6 @@ def compute_metrics(adt_arr):
         'overall':     float(np.nanmean(med)),
         'overall_iqr': float(np.nanmean(band)),
     }
-
-
-def pct_improvement(baseline, new):
-    """baseline 대비 new 가 얼마나 줄었는지 % (양수면 개선)."""
-    if baseline == 0:
-        return 0.0
-    return (1.0 - new / baseline) * 100.0
 
 
 # -------------------------------------------------------------------------
@@ -204,22 +197,22 @@ def run_lambda(ax, lam, total_ticks, md):
     ax.legend(loc='upper right', fontsize=13)
     ax.grid(True, alpha=0.3)
 
-    # ---- 개선 = baseline(post-echo) 대비 main(inline). ADT 전체구간 요약 2지표만 표로 ----
+    # ---- 차이 = baseline(post-echo) 대비 main(inline). ADT 전체구간 요약 2지표만 표로 ----
     base_m = metrics[BASE_KEY]
     main_m = metrics[MAIN_KEY]
-    adt_imp = pct_improvement(base_m['overall'], main_m['overall'])
+    adt_diff = main_m['overall'] - base_m['overall']
 
     base_col = 'post-echo'
     main_col = 'inline (현재)'
 
-    # ADT 는 % 개선(값이 커서 %가 유효), IQR·에코·변경률은 값이 작아 % 가 과장되므로 절대 차이(inline−post).
-    md.write(f"| 지표 | {base_col} | {main_col} | 개선(ADT) / 차이(그 외) |\n")
+    # 차이 열은 모두 inline−post-echo 절대 차이. 음수면 inline 이 그 지표에서 더 작다.
+    md.write(f"| 지표 | {base_col} | {main_col} | 차이 (inline−post-echo) |\n")
     md.write("|---|---:|---:|---:|\n")
-    md.write(f"| 전체 평균 ADT (중앙값 실선의 시간평균 // 단위 = 틱) | {base_m['overall']:.2f} | {main_m['overall']:.2f} | {adt_imp:+.1f}% |\n")
+    md.write(f"| 전체 평균 ADT (중앙값 실선의 시간평균 // 단위 = 틱) | {base_m['overall']:.2f} | {main_m['overall']:.2f} | {adt_diff:+.2f} |\n")
     md.write(f"| 전체 IQR 폭 (띠 평균 폭, 작을수록 일관 // 단위 = 틱) | {base_m['overall_iqr']:.2f} | {main_m['overall_iqr']:.2f} | {main_m['overall_iqr'] - base_m['overall_iqr']:+.2f} |\n")
     # 진단 시계열 전체 평균 중 비교 지표(에코·변경률)를 위 표에도 함께. R_x 는 시계열에만.
     br, mr = results[BASE_KEY], results[MAIN_KEY]
-    md.write(f"| 결정당 이웃 정보 조회 수 (전체 평균 // 단위 = 개/결정) | {br['echo_cost']:.2f} | {mr['echo_cost']:.2f} | {mr['echo_cost'] - br['echo_cost']:+.2f} |\n")
+    md.write(f"| 라우팅 결정당 이웃 조회 수 (전체 평균 // 단위 = 개/결정) | {br['echo_cost']:.2f} | {mr['echo_cost']:.2f} | {mr['echo_cost'] - br['echo_cost']:+.2f} |\n")
     # 경로 변경률은 비율이라 백분율로, 차이는 두 백분율의 차이이므로 %p 로 적는다.
     md.write(f"| 경로 변경률 (전체 평균 // 단위 = %) | {br['switch_rate'] * 100:.1f}% | {mr['switch_rate'] * 100:.1f}% | "
              f"{(mr['switch_rate'] - br['switch_rate']) * 100:+.1f}%p |\n")
@@ -238,7 +231,8 @@ def run_lambda(ax, lam, total_ticks, md):
         diag.write_diag_series_md(md, LABELS[variant],
                                   r['rx_med'], r['echo_med'], r['switch_med'],
                                   r['echo_cost'], r['switch_rate'],
-                                  t_est_med=r['t_est_med'], t_max_med=r['t_max_med'])
+                                  t_est_med=r['t_est_med'], t_max_med=r['t_max_med'],
+                                  stat_interval=STAT_INTERVAL)
 
     # ---- 패킷 전달 통계 ----
     base_r = results[BASE_KEY]
@@ -291,12 +285,13 @@ def run_all():
         md.write('  inline(현재)은 에코 먼저 → 최신값으로 선택. postecho 는 기존 Q + 이전 큐캐시로 먼저 선택 → 그 뒤 에코(AQFE/AQRERM 식).\n')
         md.write('  포인트·c·라우트메모리·요청노드 제외는 두 변형 모두 동일 → 차이는 오직 에코-선택 순서에서 온다.\n\n')
         md.write('- 성능 비교표 : 전체 평균 ADT(그래프 중앙값 실선의 시간평균)와 전체 IQR 폭(그래프 띠의 평균 폭, 작을수록 일관). 구간 분할 없이 실행 전체를 요약.\n')
-        md.write('- 진단 시계열 : R_x(=T_est/T_max) / 결정당 이웃 정보 조회 수 / 경로 변경률 을 구간 평균으로. '
+        md.write('- 진단 시계열 : R_x(=T_est/T_max) / 라우팅 결정당 이웃 조회 수 / 경로 변경률 을 구간 평균으로. '
                  '끝의 전체 평균이 에코·변경률의 요약값(총합 기준).\n')
         md.write('- 링크 사용량 : 별도 PNG 에 grid 링크 굵기(점선) + 통과량 정렬 리스트.\n\n')
 
-        md.write('> 개선 열은 baseline(post-echo) 대비 main(inline, 현재 기본) 기준. '
-                 '양수면 Inline(최신 정보를 현재 선택에 반영)이 그 지표를 개선.\n\n')
+        md.write('> 차이 열은 baseline(post-echo) 대비 main(inline, 현재 기본) 기준. '
+                 '모든 행이 절대 차이이며, 음수면 Inline(최신 정보를 현재 선택에 반영)이 그 지표를 '
+                 '더 작게 만든 것이다. ADT·IQR·경로 변경률은 작을수록 좋다.\n\n')
 
         diag.write_metric_guide_md(md)
 

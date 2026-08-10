@@ -7,7 +7,7 @@
 # - 배경: PQ(15노드) 토폴로지 고부하에서 c 가 있는 AQPRICE 가 AQRERM 보다 오히려 발산하는
 #         현상을 관찰. c(이웃 큐 혼잡 반영)가 고부하에서 역효과인지 4 변형으로 확인.
 # - node.py 의 aqrerm_c(AQRERM 큐 페널티) / c(AQPRICE 큐 페널티) 로 제어
-# - 4 지표: 전체 평균 ADT / 전체 IQR 폭 / 결정당 이웃 정보 조회 수 / 경로 변경률 (구간 분할 없음)
+# - 4 지표: 전체 평균 ADT / 전체 IQR 폭 / 라우팅 결정당 이웃 조회 수 / 경로 변경률 (구간 분할 없음)
 # - 산출물: result_c_effect_compare.md / .png
 # =============================================================================
 import random
@@ -42,7 +42,12 @@ TOPOLOGY_PQ = {'num_nodes': PQ_NUM_NODES, 'adjacency': PQ_ADJACENCY}
 # 4 변형: (algorithm, 덮어쓸 파라미터)
 #   c 를 켜고 끄며 AQRERM / AQPRICE 각각에서 큐 페널티 효과를 분리
 # -------------------------------------------------------------------------
-VARIANTS = ['aqrerm_c', 'aqrerm', 'aqprice_noc', 'aqprice']
+VARIANTS = [
+    # 'aqrerm_c', 
+    # 'aqrerm', 
+    'aqprice_noc', 
+    'aqprice'
+    ]
 VARIANT_CFG = {
     'aqrerm_c':    {'algorithm': 'aqrerm',  'params': {'aqrerm_c': C}},   # AQRERM + c
     'aqrerm':      {'algorithm': 'aqrerm',  'params': {'aqrerm_c': 0.0}}, # 순수 AQRERM
@@ -214,7 +219,7 @@ def run_lambda(ax, lam, total_ticks, md):
     md.write(align)
     md.write(row("전체 평균 ADT (중앙값 실선의 시간평균 // 단위 = 틱)", lambda v: f"{metrics[v]['overall']:.2f}"))
     md.write(row("전체 IQR 폭 (띠 평균 폭 // 단위 = 틱)",              lambda v: f"{metrics[v]['overall_iqr']:.2f}"))
-    md.write(row("결정당 이웃 정보 조회 수 (전체 평균 // 단위 = 개/결정)", lambda v: f"{results[v]['echo_cost']:.2f}"))
+    md.write(row("라우팅 결정당 이웃 조회 수 (전체 평균 // 단위 = 개/결정)", lambda v: f"{results[v]['echo_cost']:.2f}"))
     # 경로 변경률은 비율이라 백분율로 적는다.
     md.write(row("경로 변경률 (전체 평균 // 단위 = %)",        lambda v: f"{results[v]['switch_rate'] * 100:.1f}%"))
     # R_x 는 진단 시계열의 전체구간 평균 (아래 시계열 표의 '전체 평균' 과 같은 값)
@@ -233,7 +238,8 @@ def run_lambda(ax, lam, total_ticks, md):
         diag.write_diag_series_md(md, LABELS[variant],
                                   r['rx_med'], r['echo_med'], r['switch_med'],
                                   r['echo_cost'], r['switch_rate'],
-                                  t_est_med=r['t_est_med'], t_max_med=r['t_max_med'])
+                                  t_est_med=r['t_est_med'], t_max_med=r['t_max_med'],
+                                  stat_interval=STAT_INTERVAL)
 
     # ---- MD 패킷 전달 통계 ----
     md.write(f"#### 패킷 전달 통계 ({len(SEEDS)} 시드)\n\n")
@@ -295,7 +301,7 @@ def run_all():
         md.write('- 배경 : PQ 토폴로지 고부하에서 c(이웃 큐 혼잡 반영)가 있는 AQPRICE 가 AQRERM 보다 발산하는 현상 관찰.\n')
         md.write('  c 를 AQRERM 에 붙이고(aqrerm_c) AQPRICE 에서 빼서(c=0) c 의 순효과를 4 변형으로 분리.\n')
         md.write('- 성능 비교표 : 전체 평균 ADT(그래프 중앙값 실선의 시간평균)와 전체 IQR 폭(그래프 띠의 평균 폭). 구간 분할 없이 실행 전체를 요약.\n')
-        md.write('- 진단 시계열 : R_x / 결정당 이웃 정보 조회 수 / 경로 변경률 구간 평균 + 끝의 전체 평균(에코·변경률 요약).\n')
+        md.write('- 진단 시계열 : R_x / 라우팅 결정당 이웃 조회 수 / 경로 변경률 구간 평균 + 끝의 전체 평균(에코·변경률 요약).\n')
         md.write('- 링크 사용량 : 별도 PNG 에 grid 링크 굵기·색(grid 만) + md 통과량 표.\n\n')
 
         diag.write_metric_guide_md(md)

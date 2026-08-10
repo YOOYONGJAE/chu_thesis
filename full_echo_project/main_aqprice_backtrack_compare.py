@@ -5,7 +5,7 @@
 #   L1  : L=1, 요청노드 제외 (aqprice_L=1, exclude=True)        → 라우트 메모리로 직전 노드 방지
 # - node.py 의 aqprice_L / aqprice_exclude_requester 두 토글을 변형별로 조합
 # - 6x6 grid, 10 시드, λ=2/3.5/3.8 (20000 tick). 지표표 + 그래프 생산
-# - 4 지표: 전체 평균 ADT / 전체 IQR 폭 / 결정당 이웃 정보 조회 수 / 경로 변경률 (구간 분할 없음)
+# - 4 지표: 전체 평균 ADT / 전체 IQR 폭 / 라우팅 결정당 이웃 조회 수 / 경로 변경률 (구간 분할 없음)
 # - 산출물: result_aqprice_backtrack_compare.md / .png
 # =============================================================================
 import random
@@ -207,7 +207,7 @@ def run_lambda(ax, lam, total_ticks, md):
     md.write(align)
     md.write(row("전체 평균 ADT (중앙값 실선의 시간평균 // 단위 = 틱)", lambda v: f"{metrics[v]['overall']:.2f}"))
     md.write(row("전체 IQR 폭 (띠 평균 폭 // 단위 = 틱)",              lambda v: f"{metrics[v]['overall_iqr']:.2f}"))
-    md.write(row("결정당 이웃 정보 조회 수 (전체 평균 // 단위 = 개/결정)", lambda v: f"{results[v]['echo_cost']:.2f}"))
+    md.write(row("라우팅 결정당 이웃 조회 수 (전체 평균 // 단위 = 개/결정)", lambda v: f"{results[v]['echo_cost']:.2f}"))
     # 경로 변경률은 비율이라 백분율로 적는다.
     md.write(row("경로 변경률 (전체 평균 // 단위 = %)",        lambda v: f"{results[v]['switch_rate'] * 100:.1f}%"))
     # R_x 는 진단 시계열의 전체구간 평균 (아래 시계열 표의 '전체 평균' 과 같은 값)
@@ -226,7 +226,8 @@ def run_lambda(ax, lam, total_ticks, md):
         diag.write_diag_series_md(md, LABELS[variant],
                                   r['rx_med'], r['echo_med'], r['switch_med'],
                                   r['echo_cost'], r['switch_rate'],
-                                  t_est_med=r['t_est_med'], t_max_med=r['t_max_med'])
+                                  t_est_med=r['t_est_med'], t_max_med=r['t_max_med'],
+                                  stat_interval=STAT_INTERVAL)
 
     # ---- MD 패킷 전달 통계 ----
     md.write(f"#### 패킷 전달 통계 ({len(SEEDS)} 시드)\n\n")
@@ -289,7 +290,7 @@ def run_all():
         md.write('  inc(L0 포함) : 아무 방지 없음. exc(L0 제외/현재) : 이웃이 최소 Q 낼 때 질문자를 뺌(추정값 단계).\n')
         md.write('  L1 : 라우트 메모리로 직전 노드를 다음 홉 후보에서 뺌(선택 단계). L1 은 요청노드 제외도 유지.\n\n')
         md.write('- 성능 비교표 : 전체 평균 ADT(그래프 중앙값 실선의 시간평균)와 전체 IQR 폭(그래프 띠의 평균 폭). 구간 분할 없이 실행 전체를 요약.\n')
-        md.write('- 진단 시계열 : R_x / 결정당 이웃 정보 조회 수 / 경로 변경률 구간 평균 + 끝의 전체 평균(에코·변경률 요약).\n')
+        md.write('- 진단 시계열 : R_x / 라우팅 결정당 이웃 조회 수 / 경로 변경률 구간 평균 + 끝의 전체 평균(에코·변경률 요약).\n')
         md.write('- 링크 사용량 : 별도 PNG 에 grid 링크 굵기·색 + md 통과량 표.\n\n')
 
         diag.write_metric_guide_md(md)

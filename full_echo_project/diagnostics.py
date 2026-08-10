@@ -157,6 +157,15 @@ def chunk_avg(arr, n_chunks):
     return out
 
 
+def chunk_end_ticks(n_samples, n_chunks, stat_interval):
+    """chunk_avg 와 같은 방식으로 나눈 각 구간의 마지막 tick 리스트를 반환.
+    표본 i(0-based)는 tick (i+1)*stat_interval 에 기록되므로 구간 끝 표본의 tick 이 곧 구간 끝이다."""
+    if n_samples <= 0:
+        return [0] * n_chunks
+    idx_groups = np.array_split(np.arange(n_samples), min(n_chunks, n_samples))
+    return [int((ix[-1] + 1) * stat_interval) for ix in idx_groups]
+
+
 def make_panel_grid(n, panel_w=20, panel_h=12, max_cols=2):
     """실험 개수 n 에 맞춰 패널 격자를 만들고 (fig, 패널 리스트) 를 반환.
     최대 max_cols 열로 채우므로 부하 4개면 2x2, 2개면 1x2, 1개면 1x1 이 된다.
@@ -184,7 +193,7 @@ def write_metric_guide_md(md, doc=METRIC_DOC):
     md.write('## 지표 정의\n\n')
     md.write('- 전체 평균 ADT (틱) : ADT 그래프 중앙값 실선의 전체구간 시간평균. 작을수록 빠름.\n')
     md.write('- 전체 IQR 폭 (틱) : ADT 그래프 오차 막대 길이의 전체구간 평균. 작을수록 시드 간 일관.\n')
-    md.write('- 결정당 이웃 정보 조회 수 (개/결정) : 이웃 조회 총횟수 / 라우팅 결정 총횟수, 시드 간 중앙값.\n')
+    md.write('- 라우팅 결정당 이웃 조회 수 (개/결정) : 이웃 조회 총횟수 / 라우팅 결정 총횟수, 시드 간 중앙값.\n')
     md.write('- 경로 변경률 (%) : next-hop 변경 총횟수 / 라우팅 결정 총횟수, 시드 간 중앙값. 차이 열은 %p.\n')
     md.write('- R_x (0~1) : 각 노드의 T_est/T_max 를 노드 평균한 혼잡 신호의 전체구간 시간평균.\n')
     md.write('- T_est (틱) : R_x 의 분자. 노드 평균의 전체구간 시간평균.\n')
@@ -197,7 +206,7 @@ def write_metric_guide_md(md, doc=METRIC_DOC):
 
 def write_diag_series_md(md, label, rx_med, echo_med, switch_med,
                          echo_scalar, switch_scalar, n_chunks=10,
-                         t_est_med=None, t_max_med=None):
+                         t_est_med=None, t_max_med=None, stat_interval=100):
     """진단 시계열을 구간 평균 표로 md 에 쓴다.
     t_est_med / t_max_med 를 넘기면 R_x 의 분자·분모 열이 함께 나온다.
     세 열 모두 같은 규칙(구간 평균 + 끝 행은 전체 시간평균)을 쓴다 — R_x 의 전체 평균이
@@ -207,11 +216,11 @@ def write_diag_series_md(md, label, rx_med, echo_med, switch_med,
 
     md.write(f"#### 진단 시계열 (구간 평균, {label})\n\n")
     if has_t:
-        md.write("| 구간 | R_x | T_est (틱) | T_max (틱) | "
-                 "결정당 이웃 정보 조회 수 (개/결정) | 경로 변경률 (%) |\n")
+        md.write("| 구간 (끝 tick) | R_x | T_est (틱) | T_max (틱) | "
+                 "라우팅 결정당 이웃 조회 수 (개/결정) | 경로 변경률 (%) |\n")
         md.write("|---|---:|---:|---:|---:|---:|\n")
     else:
-        md.write("| 구간 | R_x | 결정당 이웃 정보 조회 수 (개/결정) | 경로 변경률 (%) |\n")
+        md.write("| 구간 (끝 tick) | R_x | 라우팅 결정당 이웃 조회 수 (개/결정) | 경로 변경률 (%) |\n")
         md.write("|---|---:|---:|---:|\n")
 
     rx_c = chunk_avg(rx_med, n_chunks)
@@ -219,13 +228,17 @@ def write_diag_series_md(md, label, rx_med, echo_med, switch_med,
     sw_c = chunk_avg(switch_med, n_chunks)
     te_c = chunk_avg(t_est_med, n_chunks) if has_t else None
     tm_c = chunk_avg(t_max_med, n_chunks) if has_t else None
+    # 구간 번호(1,2,3…) 대신 그 구간이 끝나는 tick 을 라벨로 쓴다 (2000, 4000, …).
+    ends = chunk_end_ticks(len(rx_med) if rx_med is not None else 0,
+                           n_chunks, stat_interval)
 
     for i in range(len(rx_c)):
+        tick = ends[i] if i < len(ends) else (i + 1)
         if has_t:
-            md.write(f"| {i + 1} | {rx_c[i]:.3f} | {te_c[i]:.2f} | {tm_c[i]:.2f} | "
+            md.write(f"| {tick} | {rx_c[i]:.3f} | {te_c[i]:.2f} | {tm_c[i]:.2f} | "
                      f"{ec_c[i]:.2f} | {sw_c[i] * 100:.1f}% |\n")
         else:
-            md.write(f"| {i + 1} | {rx_c[i]:.3f} | {ec_c[i]:.2f} | {sw_c[i] * 100:.1f}% |\n")
+            md.write(f"| {tick} | {rx_c[i]:.3f} | {ec_c[i]:.2f} | {sw_c[i] * 100:.1f}% |\n")
 
     if has_t:
         md.write(f"| 전체 평균 | {series_overall(rx_med):.3f} | "

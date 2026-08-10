@@ -77,7 +77,7 @@ class Simulator:
         t_max_series             = []  # 같은 시점 T_max 의 노드 평균 (분모. 노드마다 단조 증가)
         echo_per_decision_series = []  # 윈도우 동안 이웃 조회 수 / 라우팅 결정 수 (모든 알고리즘)
         switch_rate_series       = []  # 윈도우 동안 next-hop 변경 / 라우팅 결정 (경로 진동)
-        # 결정당 이웃 정보 조회 수(구간)는 누적 카운터의 구간 델타로 계산 → 직전 스냅샷 보관
+        # 라우팅 결정당 이웃 조회 수(구간)는 누적 카운터의 구간 델타로 계산 → 직전 스냅샷 보관
         prev_eq = 0   # 직전 윈도우까지 누적 echo_query 합
         prev_rc = 0   # 직전 윈도우까지 누적 route_call 합
         window_delivered = []
@@ -185,7 +185,7 @@ class Simulator:
                 t_est_series.append(float(np.mean([n.T_est for n in valid])) if valid else 0.0)
                 t_max_series.append(float(np.mean([n.T_max for n in valid])) if valid else 0.0)
 
-                # 결정당 이웃 정보 조회 수 (구간): 누적 조회·결정의 구간 델타로 계산 (모든 알고리즘 적용)
+                # 라우팅 결정당 이웃 조회 수 (구간): 누적 조회·결정의 구간 델타로 계산 (모든 알고리즘 적용)
                 cur_eq = sum(n.echo_query_count for n in self.nodes)
                 cur_rc = sum(n.route_call_count for n in self.nodes)
                 d_eq = cur_eq - prev_eq
@@ -219,11 +219,11 @@ class Simulator:
         )
 
         # 에코 비용 진단 — 실행 전체 노드 카운터 합산
-        # echo_cost = total_echo_queries / total_route_calls = 결정당 평균 조회 이웃 수
+        # echo_cost = total_echo_queries / total_route_calls = 라우팅 결정당 평균 조회 이웃 수
         self.total_echo_queries = sum(node.echo_query_count for node in self.nodes)
         self.total_route_calls  = sum(node.route_call_count for node in self.nodes)
         # 경로 변경률 진단 — 전체 next-hop 변경 횟수 합산
-        # switch_rate = total_switches / total_route_calls = 결정당 next-hop 변경 비율
+        # switch_rate = total_switches / total_route_calls = 라우팅 결정당 next-hop 변경 비율
         self.total_switches = sum(node.switch_count for node in self.nodes)
         # =====================================================================
         # [절단 전/후 link_usage 결과 노출 — 이번 연구 마감 범위 제외]

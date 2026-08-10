@@ -63,8 +63,8 @@ class Node:
 
         # 에코 비용 진단 — 실행 전체 누적 (리셋 없음). simulator 가 종료 시 합산해 노출.
         # echo_query_count = 이웃에게 전달시간 추정을 조회한 총 횟수 (best_estimate 호출 수)
-        # route_call_count = 이 노드가 라우팅 결정을 내린 총 횟수
-        # 결정당 이웃 정보 조회 수 = 전체 echo_query_count 합 / 전체 route_call_count 합
+        # route_call_count = 이 노드가 라우팅을 수행한 총 횟수 (지표의 분모)
+        # 라우팅 결정당 이웃 조회 수 = 전체 echo_query_count 합 / 전체 route_call_count 합
         self.echo_query_count = 0
         self.route_call_count = 0
 
@@ -147,7 +147,7 @@ class Node:
                              f"그 외 변형은 legacy_algorithm_files/ 참조)")
 
         # 경로 변경률 집계: 같은 목적지에 대해 직전 선택과 달라졌으면 변경으로 카운트.
-        # (해당 목적지의 첫 결정은 비교 대상이 없어 변경으로 세지 않고 기록만 한다)
+        # (해당 목적지의 첫 라우팅 결정은 비교 대상이 없어 변경으로 세지 않고 기록만 한다)
         dst = packet.dst
         prev = self.last_choice.get(dst)
         if prev is not None and prev != next_hop:
@@ -297,6 +297,12 @@ class Node:
         # 기본 True(제외 = 기존 동작, AQRERM 라우트 메모리에서 온 조건).
         # ablation 스크립트가 aqprice_exclude_requester=False 로 두면 Q-routing/AQFE 처럼 질문자도 포함.
         exclude_req = self.id if self.params.get('aqprice_exclude_requester', True) else None
+        # 포인트 게이트 토글 — 예산·가격 판정을 건너뛸지 여부. 제거 실험 전용.
+        #   True(기본, AQPRICE 정식): total_point >= 가격 일 때만 Full Echo.
+        #   False: 판정 없이 항상 Full Echo 를 수행 (Inline·c·L 은 그대로 유지).
+        # 파라미터로 gr / b_max 를 크게 주는 방식과 달리, 한 tick 에 여러 패킷을 처리해도
+        # 반드시 매 결정 Full Echo 가 되므로 '예산만 제거한 조건' 이 정확히 성립한다.
+        point_gate = self.params.get('aqprice_point_gate', True)
 
         self.update_T_est()
 
@@ -317,9 +323,11 @@ class Node:
         if not candidates:
             candidates = self.neighbors
 
-        if self.total_point >= c_pt:
+        if (not point_gate) or (self.total_point >= c_pt):
             # === Pre-echo 모드 ===
-            self.total_point -= c_pt
+            # 게이트가 꺼진 조건에서는 차감 없이 항상 이 분기를 탄다 (예산 개념 자체가 없는 상태).
+            if point_gate:
+                self.total_point -= c_pt
             self.pfe_window_full_echo_count += 1
 
             # 1차: 모든 이웃의 fresh t_n 수집 (Full Echo)

@@ -4,7 +4,7 @@
 # - 지표:
 # ① 전체 평균 ADT — 그래프 중앙값 실선을 실행 전체 구간에 걸쳐 시간 평균
 # ② 전체 IQR 폭 — 그래프 IQR 띠(q75−q25)의 전체 구간 평균 폭 (작을수록 시드 간 일관)
-# ③ 결정당 이웃 정보 조회 수 (이웃 조회 총횟수 / 라우팅 결정 총횟수, 성능 대 비용)
+# ③ 라우팅 결정당 이웃 조회 수 (이웃 조회 총횟수 / 라우팅 결정 총횟수, 성능 대 비용)
 # ④ 경로 변경률 (next-hop 변경 총횟수 / 라우팅 결정 총횟수)
 # - 구간을 나누지 않고 실행 전체를 요약 (정착 임계값 지정 없음)
 # - 산출물: result_aqrerm_vs_aqprice.md / .png
@@ -20,6 +20,7 @@ from simulator import Simulator
 import diagnostics as diag
 # from topology_grid import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACENCY
 from topology_nsfnet import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACENCY
+# from topology_pq import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACENCY
 
 # -------------------------------------------------------------------------
 # 파라미터 (main_compare_AQPRICE 와 동일)
@@ -57,7 +58,7 @@ TOTAL_TICKS = 20000
 TOPO_TAG   = {36: 'GRID', 14: 'NSFNET', 15: 'PQ'}.get(GRID_NUM_NODES, f'{GRID_NUM_NODES}N')
 # RESULT_TAG = 'LOW'   # 부하 표기 (수동): LOW / HIGH 등
 # RESULT_TAG = 'HIGH'   # 부하 표기 (수동): LOW / HIGH 등
-RESULT_TAG = '3.8'   # 부하 표기 (수동): LOW / HIGH 등
+RESULT_TAG = '3.2'   # 부하 표기 (수동): LOW / HIGH 등
 _BASENAME  = f'result_aqrerm_vs_aqprice({TOPO_TAG},{RESULT_TAG},{TOTAL_TICKS})'
 MD_PATH       = f'{_BASENAME}.md'
 PNG_PATH      = f'{_BASENAME}.png'
@@ -68,6 +69,7 @@ EXPERIMENTS = [
     # 고부하 상한을 3.8 로 둔 이유 : AQRERM 은 발산하고 AQPRICE 는 정착하는 경계 지점.
     {'lam': 2.5, 'total_ticks': 20000},   # 저부하
     {'lam': 3.0, 'total_ticks': 20000},   # 중저부하
+    # {'lam': 3.2, 'total_ticks': 20000},   # 중저부하
     {'lam': 3.5, 'total_ticks': 20000},   # 중고부하
     {'lam': 3.8, 'total_ticks': 20000},   # 고부하
 ]
@@ -98,13 +100,6 @@ def compute_metrics(adt_arr):
         'overall':     float(np.nanmean(med)),
         'overall_iqr': float(np.nanmean(band)),
     }
-
-
-def pct_improvement(baseline, new):
-    """baseline 대비 new 가 얼마나 줄었는지 % (양수면 개선)."""
-    if baseline == 0:
-        return 0.0
-    return (1.0 - new / baseline) * 100.0
 
 
 # -------------------------------------------------------------------------
@@ -195,16 +190,16 @@ def run_lambda(ax, lam, total_ticks, md):
 
     aqrerm_m  = metrics['aqrerm']
     aqprice_m = metrics['aqprice']
-    adt_imp = pct_improvement(aqrerm_m['overall'], aqprice_m['overall'])
+    adt_diff = aqprice_m['overall'] - aqrerm_m['overall']
 
-    # ADT 는 % 개선, IQR·에코·변경률은 값이 작아 % 가 과장되므로 절대 차이(AQPRICE−AQRERM).
-    md.write("| 지표 | AQRERM | AQPRICE | 개선(ADT) / 차이(그 외) |\n")
+    # 차이 열은 모두 AQPRICE−AQRERM 절대 차이. 음수면 AQPRICE 가 그 지표에서 더 작다.
+    md.write("| 지표 | AQRERM | AQPRICE | 차이 (AQPRICE−AQRERM) |\n")
     md.write("|---|---:|---:|---:|\n")
-    md.write(f"| 전체 평균 ADT (중앙값 실선의 시간평균 // 단위 = 틱) | {aqrerm_m['overall']:.2f} | {aqprice_m['overall']:.2f} | {adt_imp:+.1f}% |\n")
+    md.write(f"| 전체 평균 ADT (중앙값 실선의 시간평균 // 단위 = 틱) | {aqrerm_m['overall']:.2f} | {aqprice_m['overall']:.2f} | {adt_diff:+.2f} |\n")
     md.write(f"| 전체 IQR 폭 (띠 평균 폭, 작을수록 일관 // 단위 = 틱) | {aqrerm_m['overall_iqr']:.2f} | {aqprice_m['overall_iqr']:.2f} | {aqprice_m['overall_iqr'] - aqrerm_m['overall_iqr']:+.2f} |\n")
     # 진단 시계열 전체 평균 중 비교 지표(에코·변경률)를 위 표에도 함께. R_x 는 시계열에만.
     ar, pr = results['aqrerm'], results['aqprice']
-    md.write(f"| 결정당 이웃 정보 조회 수 (전체 평균 // 단위 = 개/결정) | {ar['echo_cost']:.2f} | {pr['echo_cost']:.2f} | {pr['echo_cost'] - ar['echo_cost']:+.2f} |\n")
+    md.write(f"| 라우팅 결정당 이웃 조회 수 (전체 평균 // 단위 = 개/결정) | {ar['echo_cost']:.2f} | {pr['echo_cost']:.2f} | {pr['echo_cost'] - ar['echo_cost']:+.2f} |\n")
     # 경로 변경률은 비율이라 백분율로, 차이는 두 백분율의 차이이므로 %p 로 적는다.
     md.write(f"| 경로 변경률 (전체 평균 // 단위 = %) | {ar['switch_rate'] * 100:.1f}% | {pr['switch_rate'] * 100:.1f}% | "
              f"{(pr['switch_rate'] - ar['switch_rate']) * 100:+.1f}%p |\n")
@@ -223,7 +218,8 @@ def run_lambda(ax, lam, total_ticks, md):
         diag.write_diag_series_md(md, LABELS[algo],
                                   r['rx_med'], r['echo_med'], r['switch_med'],
                                   r['echo_cost'], r['switch_rate'],
-                                  t_est_med=r['t_est_med'], t_max_med=r['t_max_med'])
+                                  t_est_med=r['t_est_med'], t_max_med=r['t_max_med'],
+                                  stat_interval=STAT_INTERVAL)
 
     # ---- MD: 패킷 전달 통계 ----
     aqrerm_r  = results['aqrerm']
@@ -245,8 +241,8 @@ def run_lambda(ax, lam, total_ticks, md):
         md.write("\n")
 
     # ---- 콘솔 출력 ----
-    print(f"  {'지표':<24} | {'AQRERM':>12} | {'AQPRICE':>12} | {'개선':>12}")
-    print(f"  {'전체 평균 ADT':<24} | {aqrerm_m['overall']:>12.2f} | {aqprice_m['overall']:>12.2f} | {adt_imp:>+11.1f}%")
+    print(f"  {'지표':<24} | {'AQRERM':>12} | {'AQPRICE':>12} | {'차이':>12}")
+    print(f"  {'전체 평균 ADT':<24} | {aqrerm_m['overall']:>12.2f} | {aqprice_m['overall']:>12.2f} | {adt_diff:>+11.2f}")
     print(f"  {'전체 IQR 폭':<24} | {aqrerm_m['overall_iqr']:>12.2f} | {aqprice_m['overall_iqr']:>12.2f} | "
           f"{aqprice_m['overall_iqr'] - aqrerm_m['overall_iqr']:>+11.2f} ")
 
@@ -276,7 +272,7 @@ def run_all():
 
         md.write('## 출력 구성\n\n')
         md.write('- 성능 비교표 : 전체 평균 ADT(그래프 중앙값 실선의 시간평균)와 전체 IQR 폭(그래프 띠의 평균 폭, 작을수록 일관). 구간 분할 없이 실행 전체를 요약.\n')
-        md.write('- 진단 시계열 : R_x / 결정당 이웃 정보 조회 수 / 경로 변경률 구간 평균 + 끝의 전체 평균(에코·변경률 요약).\n')
+        md.write('- 진단 시계열 : R_x / 라우팅 결정당 이웃 조회 수 / 경로 변경률 구간 평균 + 끝의 전체 평균(에코·변경률 요약).\n')
         md.write('- 링크 사용량 : 별도 PNG 에 grid 링크 굵기·색(적을수록 하늘, 많을수록 빨강) + md 통과량 표.\n\n')
 
         diag.write_metric_guide_md(md)

@@ -61,7 +61,7 @@ def run_all():
     fig.suptitle(f"{topo_name(GRID_NUM_NODES)} — aqprice c-sweep (L={L}, seed={SEED})")
 
     with open(MD_PATH, 'w', encoding='utf-8') as md:
-        md.write('# 6x6 Grid AQPRICE c-sweep\n\n')
+        md.write(f'# {topo_name(GRID_NUM_NODES)} AQPRICE c-sweep\n\n')
 
         for ax, exp in zip(axes, EXPERIMENTS):
             lam = exp['lam']

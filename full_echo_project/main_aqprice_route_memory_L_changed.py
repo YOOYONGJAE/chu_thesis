@@ -5,7 +5,7 @@
 #   L=1/2/3 : 최근 방문 노드를 각각 1/2/3 개까지 다음 홉 후보에서 제외
 # - node.py 는 aqprice_L 로 이 길이를 제어 (기본 0)
 # - 6x6 grid, 10 시드, λ=3.8 만 (40000 tick). 지표표 + 그래프 생산
-# - 4 지표: 전체 평균 ADT / 전체 IQR 폭 / 결정당 이웃 정보 조회 수 / 경로 변경률 (구간 분할 없음)
+# - 4 지표: 전체 평균 ADT / 전체 IQR 폭 / 라우팅 결정당 이웃 조회 수 / 경로 변경률 (구간 분할 없음)
 # - 산출물: result_aqprice_route_memory_L_changed.md / .png
 # =============================================================================
 import random
@@ -108,13 +108,6 @@ def compute_metrics(adt_arr):
     }
 
 
-def pct_improvement(baseline, new):
-    """baseline 대비 new 가 얼마나 줄었는지 % (양수면 개선)."""
-    if baseline == 0:
-        return 0.0
-    return (1.0 - new / baseline) * 100.0
-
-
 # -------------------------------------------------------------------------
 # 한 부하 실험 (한 패널)
 # -------------------------------------------------------------------------
@@ -213,24 +206,23 @@ def run_lambda(ax, lam, total_ticks, md):
         alt = [v for v in VARIANTS if v != REF_KEY][0]   # 기준이 아닌 쪽
         m_ref, m_alt = metrics[REF_KEY], metrics[alt]
         r_ref, r_alt = results[REF_KEY], results[alt]
-        adt_imp = pct_improvement(m_ref['overall'], m_alt['overall'])
+        adt_diff = m_alt['overall'] - m_ref['overall']
 
         def row_d(name, fmt, diff_txt):
             """원값 열들 뒤에 차이 열 하나를 붙인 행."""
             return (f"| {name} | " + " | ".join(fmt(v) for v in VARIANTS)
                     + f" | {diff_txt} |\n")
 
-        # ADT 는 값이 커서 % 개선이 유효하고, IQR·에코·변경률은 값이 작아 % 가 과장되므로
-        # 절대 차이(기준이 아닌 쪽 − 기준)로 낸다.
-        md.write(f"| 지표 | {cols} | 개선(ADT) / 차이(그 외) |\n")
+        # 차이 열은 모두 (기준이 아닌 쪽 − 기준) 절대 차이. 음수면 비교 대상이 그 지표에서 더 작다.
+        md.write(f"| 지표 | {cols} | 차이 ({LABELS_SHORT[alt]}−{LABELS_SHORT[REF_KEY]}) |\n")
         md.write("|---" + "|---:" * (len(VARIANTS) + 1) + "|\n")
         md.write(row_d("전체 평균 ADT (중앙값 실선의 시간평균 // 단위 = 틱)",
                        lambda v: f"{metrics[v]['overall']:.2f}",
-                       f"{adt_imp:+.1f}%"))
+                       f"{adt_diff:+.2f}"))
         md.write(row_d("전체 IQR 폭 (띠 평균 폭 // 단위 = 틱)",
                        lambda v: f"{metrics[v]['overall_iqr']:.2f}",
                        f"{m_alt['overall_iqr'] - m_ref['overall_iqr']:+.2f}"))
-        md.write(row_d("결정당 이웃 정보 조회 수 (전체 평균 // 단위 = 개/결정)",
+        md.write(row_d("라우팅 결정당 이웃 조회 수 (전체 평균 // 단위 = 개/결정)",
                        lambda v: f"{results[v]['echo_cost']:.2f}",
                        f"{r_alt['echo_cost'] - r_ref['echo_cost']:+.2f}"))
         # 경로 변경률은 비율이라 백분율로, 차이는 두 백분율의 차이이므로 %p 로 적는다.
@@ -257,7 +249,7 @@ def run_lambda(ax, lam, total_ticks, md):
         md.write(align)
         md.write(row("전체 평균 ADT (중앙값 실선의 시간평균 // 단위 = 틱)", lambda v: f"{metrics[v]['overall']:.2f}"))
         md.write(row("전체 IQR 폭 (띠 평균 폭 // 단위 = 틱)",              lambda v: f"{metrics[v]['overall_iqr']:.2f}"))
-        md.write(row("결정당 이웃 정보 조회 수 (전체 평균 // 단위 = 개/결정)", lambda v: f"{results[v]['echo_cost']:.2f}"))
+        md.write(row("라우팅 결정당 이웃 조회 수 (전체 평균 // 단위 = 개/결정)", lambda v: f"{results[v]['echo_cost']:.2f}"))
         md.write(row("경로 변경률 (전체 평균 // 단위 = %)",        lambda v: f"{results[v]['switch_rate'] * 100:.1f}%"))
         md.write(row("R_x (전체 평균, 혼잡 신호 // 단위 없음, 0~1 비율)",
                      lambda v: f"{diag.series_overall(results[v]['rx_med']):.3f}"))
@@ -273,7 +265,8 @@ def run_lambda(ax, lam, total_ticks, md):
         diag.write_diag_series_md(md, LABELS[variant],
                                   r['rx_med'], r['echo_med'], r['switch_med'],
                                   r['echo_cost'], r['switch_rate'],
-                                  t_est_med=r['t_est_med'], t_max_med=r['t_max_med'])
+                                  t_est_med=r['t_est_med'], t_max_med=r['t_max_med'],
+                                  stat_interval=STAT_INTERVAL)
 
     # ---- MD 패킷 전달 통계 ----
     md.write(f"#### 패킷 전달 통계 ({len(SEEDS)} 시드)\n\n")
@@ -304,7 +297,7 @@ def run_lambda(ax, lam, total_ticks, md):
     prow("전체 평균 ADT", lambda v: f"{metrics[v]['overall']:.2f}")
     prow("전체 IQR 폭",   lambda v: f"{metrics[v]['overall_iqr']:.2f}")
     if two_way:
-        print(f"  {'→ ADT 개선(기준=' + LABELS_SHORT[REF_KEY] + ')':<24} | {adt_imp:>+11.1f}%")
+        print(f"  {'→ ADT 차이(기준=' + LABELS_SHORT[REF_KEY] + ')':<24} | {adt_diff:>+11.2f}")
 
     # 링크 다이어그램용: 변형별 시드 합산 link_usage 반환
     return {v: results[v]['link_sum'] for v in VARIANTS}
@@ -336,10 +329,10 @@ def run_all():
         md.write('- 성능 비교표 : 전체 평균 ADT(그래프 중앙값 실선의 시간평균)와 전체 IQR 폭(그래프 띠의 평균 폭). 구간 분할 없이 실행 전체를 요약.\n')
         if len(VARIANTS) == 2:
             _alt = [v for v in VARIANTS if v != REF_KEY][0]
-            md.write(f'- 개선/차이 열 : 기준은 {LABELS_SHORT[REF_KEY]}, 비교 대상은 {LABELS_SHORT[_alt]}. '
-                     f'ADT 는 % 개선(양수면 {LABELS_SHORT[_alt]} 가 더 빠름), '
-                     f'IQR 폭·에코·변경률은 절대 차이({LABELS_SHORT[_alt]} − {LABELS_SHORT[REF_KEY]}).\n')
-        md.write('- 진단 시계열 : R_x / 결정당 이웃 정보 조회 수 / 경로 변경률 구간 평균 + 끝의 전체 평균(에코·변경률 요약).\n')
+            md.write(f'- 차이 열 : 기준은 {LABELS_SHORT[REF_KEY]}, 비교 대상은 {LABELS_SHORT[_alt]}. '
+                     f'모두 {LABELS_SHORT[_alt]} − {LABELS_SHORT[REF_KEY]} 절대 차이이며, '
+                     f'음수면 {LABELS_SHORT[_alt]} 가 그 지표에서 더 작다.\n')
+        md.write('- 진단 시계열 : R_x / 라우팅 결정당 이웃 조회 수 / 경로 변경률 구간 평균 + 끝의 전체 평균(에코·변경률 요약).\n')
         md.write('- 링크 사용량 : 별도 PNG 에 grid 링크 굵기·색 + md 통과량 표.\n\n')
 
         diag.write_metric_guide_md(md)

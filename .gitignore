@@ -2,3 +2,6 @@ __pycache__/
 *.pyc
 full_echo_project/env/
 *.png
+
+# 후속 연구 탐색용 — 논문 본실험과 분리, 저장소에 올리지 않음
+full_echo_project/future work/
