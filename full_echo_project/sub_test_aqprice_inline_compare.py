@@ -18,12 +18,14 @@ plt.rcParams['axes.unicode_minus'] = False       # 마이너스 기호 깨짐 �
 from simulator import Simulator
 import diagnostics as diag
 from topology_grid import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACENCY
+# from topology_sub_test_grid_full import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACENCY
 # from topology_nsfnet import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACENCY
 
 
 def topo_name(n):
-    """노드 수로 토폴로지 이름 자동 판별 (import 만 바꾸면 제목도 자동 반영)."""
-    return {36: '6x6 Grid', 14: 'NSFNET', 15: 'PQ'}.get(n, f'{n}-node')
+    """토폴로지 이름 자동 판별. 노드 수가 같은 격자 두 종은 링크 수로 가른다.
+    (import 한 줄만 바꾸면 제목과 파일명이 함께 따라온다.)"""
+    return diag.topo_name(n, GRID_ADJACENCY)
 
 
 # -------------------------------------------------------------------------
@@ -46,14 +48,14 @@ VARIANTS = ['postecho', 'inline']   # 표/그래프 순서: baseline(post) → m
 BASE_KEY = 'postecho'               # 차이 계산의 기준(baseline)
 MAIN_KEY = 'inline'                 # 현재 AQPRICE 기본
 VARIANT_INLINE = {'postecho': False, 'inline': True}
+# 그래프 범례와 md 표에 그대로 나가는 이름. 논문 표기와 일치시킨다.
+#   inline   = AQPRICE 정식 (에코 → 선택)
+#   postecho = Inline Echo 제거 조건 (선택 → 에코)
 LABELS = {
-    'postecho': 'AQPRICE (post-echo, select first)',
-    'inline':   'AQPRICE (inline, current)',
+    'postecho': 'AQPRICE-Inline',
+    'inline':   'AQPRICE',
 }
-LABELS_SHORT = {
-    'postecho': 'post-echo',
-    'inline':   'inline(현재)',
-}
+LABELS_SHORT = dict(LABELS)
 COLORS = {
     'postecho': '#D55E00',  # 주홍
     'inline':   '#56B4E9',  # 하늘색 (현재 기본)
@@ -64,7 +66,7 @@ STAT_INTERVAL = 100
 TOTAL_TICKS = 20000
 
 # 파일명 태그: (토폴로지, 부하, 틱수). 토폴로지·틱수는 자동, 부하 태그는 수동.
-TOPO_TAG   = {36: 'GRID', 14: 'NSFNET', 15: 'PQ'}.get(GRID_NUM_NODES, f'{GRID_NUM_NODES}N')
+TOPO_TAG   = diag.topo_tag(GRID_NUM_NODES, GRID_ADJACENCY)
 RESULT_TAG = 'LOW'   # 부하 표기 (수동): LOW / HIGH 등
 # RESULT_TAG = 'HIGH'   # 부하 표기 (수동): LOW / HIGH 등
 _BASENAME  = f'result_aqprice_inline_compare({TOPO_TAG},{RESULT_TAG},{TOTAL_TICKS})'
@@ -159,8 +161,8 @@ def run_lambda(ax, lam, total_ticks, md):
             'median':    np.nanmedian(adt_arr, axis=0),
             'q25':       np.nanpercentile(adt_arr, 25, axis=0),
             'q75':       np.nanpercentile(adt_arr, 75, axis=0),
-            'echo_cost':   float(np.nanmedian(echo_costs)),   # 진단 시계열 요약(전체 평균)용 스칼라
-            'switch_rate': float(np.nanmedian(switch_rates)),
+            'echo_cost':   float(np.mean(echo_costs)),        # 진단 시계열 요약(전체 평균)용 스칼라. 시드 10개 값의 평균
+            'switch_rate': float(np.mean(switch_rates)),
             'rx_med':     diag.median_series(rx_runs),         # 윈도우별 시드 간 중앙값
             't_est_med':  diag.median_series(te_runs),
             't_max_med':  diag.median_series(tm_runs),
@@ -190,11 +192,11 @@ def run_lambda(ax, lam, total_ticks, md):
                     capsize=3, elinewidth=1.2, capthick=1.2,
                     label=LABELS[variant], color=COLORS[variant], linewidth=2.0)
 
-    ax.set_title(f"λ={lam}", fontsize=16)
-    ax.set_xlabel('Simulator Time', fontsize=14)
-    ax.set_ylabel('Average Delivery Time', fontsize=14)
-    ax.tick_params(axis='both', labelsize=12)
-    ax.legend(loc='upper right', fontsize=13)
+    ax.set_title(f"λ={lam}", fontsize=20)
+    ax.set_xlabel('Simulator Time', fontsize=18)
+    ax.set_ylabel('Average Delivery Time', fontsize=18)
+    ax.tick_params(axis='both', labelsize=16)
+    ax.legend(loc='upper right', fontsize=17)
     ax.grid(True, alpha=0.3)
 
     # ---- 차이 = baseline(post-echo) 대비 main(inline). ADT 전체구간 요약 2지표만 표로 ----
@@ -267,9 +269,10 @@ def run_all():
     # 패널 배치 — 부하 4개면 2x2. 패널 하나당 크기가 고정이라 실험 수가 달라져도 비율 유지.
     fig, axes = diag.make_panel_grid(len(EXPERIMENTS))
     fig.suptitle(
-        f"{topo_name(GRID_NUM_NODES)} — AQPRICE Inline Echo on/off (post-echo / inline)  "
+        f"{topo_name(GRID_NUM_NODES)} — AQPRICE Inline Echo on/off (AQPRICE / AQPRICE-Inline)  "
         f"(c={C}, seeds n={len(SEEDS)}, {TOTAL_TICKS}tick)",
-        fontsize=17,
+        fontsize=22,
+        y=0.99,
     )
 
     with open(MD_PATH, 'w', encoding='utf-8') as md:
@@ -300,7 +303,8 @@ def run_all():
             per_var = run_lambda(ax, exp['lam'], exp['total_ticks'], md)
             link_data.append((exp['lam'], per_var))
 
-    plt.tight_layout()
+    # rect 위쪽을 0.96 으로 잘라 suptitle 자리를 남긴다 (제목이 패널 제목과 겹치지 않게)
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
     plt.savefig(PNG_PATH, dpi=150)
     plt.close()
     print(f"\n결과 PNG : {PNG_PATH}")
@@ -314,12 +318,12 @@ def run_all():
                                    squeeze=False)
         figL.suptitle(
             f"{topo_name(GRID_NUM_NODES)} — link usage  [color & width = usage level]",
-            fontsize=15)
+            fontsize=20)
         vmin, vmax = diag.link_usage_range([per[v] for (lam, per) in link_data for v in per])
         for r, variant in enumerate(VARIANTS):
             for c, (lam, per_var) in enumerate(link_data):
                 diag.plot_link_thickness(axesL[r][c], per_var[variant],
-                                         GRID_NUM_NODES, f"{variant}  λ={lam}",
+                                         GRID_NUM_NODES, f"{LABELS_SHORT[variant]}  λ={lam}",
                                          vmin=vmin, vmax=vmax)
         diag.add_link_colorbar(figL, axesL.ravel().tolist(), vmin, vmax)
         figL.savefig(LINK_PNG_PATH, dpi=150, bbox_inches='tight')

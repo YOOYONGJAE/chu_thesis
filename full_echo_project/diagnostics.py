@@ -17,8 +17,20 @@ from matplotlib.colors import LinearSegmentedColormap
 
 # 링크 통과량 색: 연한 하늘색 → 파랑 → 주황 → 빨강 (굵기와 함께 이중 인코딩).
 # 적녹색약 대비: 저~중 구간을 파랑 계열로 확실히 벌리고, 고 구간만 주황→빨강. 굵기가 크기를 한 번 더 보강.
-LINK_CMAP = LinearSegmentedColormap.from_list(
-    'linkuse', ['#d6ecfb', '#2b7bba', '#f39c12', '#e60023'])
+# 앵커 위치는 10 단계 기준이다. 아래 7 단계가 예전 7 단계 색과 정확히 같아지도록
+# 기존 4 색을 0 ~ 0.7 구간에 배치하고, 그 위 3 단계를 적갈색 → 갈색 → 검정으로 잇는다.
+# 0.75 / 0.85 / 0.95 는 10 단계일 때 8·9·10 번째 밴드의 중앙이라 그 색이 그대로 찍힌다.
+# N_LINK_LEVELS 를 10 이 아닌 값으로 바꾸면 이 대응이 깨지므로 앵커도 함께 손봐야 한다.
+LINK_CMAP = LinearSegmentedColormap.from_list('linkuse', [
+    (0.0000, '#d6ecfb'),   # 연한 하늘색
+    (0.2333, '#2b7bba'),   # 파랑
+    (0.4667, '#f39c12'),   # 주황
+    (0.7000, '#e60023'),   # 빨강 (기존 색 구간의 끝)
+    (0.7500, '#a83a1e'),   # 적갈색
+    (0.8500, '#6b3410'),   # 갈색
+    (0.9500, '#000000'),   # 검정 (가장 혼잡)
+    (1.0000, '#000000'),
+])
 
 
 # -------------------------------------------------------------------------
@@ -57,7 +69,9 @@ def grid_positions(num_nodes, cols=6):
     return {i: (i % cols, rows - 1 - i // cols) for i in range(num_nodes)}
 
 
-N_LINK_LEVELS = 7   # 통과량을 몇 개 레벨로 이산화할지 (전역 vmin~vmax 를 균등 분할)
+N_LINK_LEVELS = 10  # 통과량을 몇 개 레벨로 이산화할지 (전역 vmin~vmax 를 균등 분할)
+                    # 레벨을 늘리면 색이 촘촘해지는 대신 인접 레벨의 굵기 차이가 줄어든다.
+                    # 굵기 간격 = (max_lw - min_lw) / (N_LINK_LEVELS - 1)
 
 
 def level_colors(n_levels=N_LINK_LEVELS):
@@ -101,9 +115,9 @@ def plot_link_thickness(ax, link_usage, num_nodes, title, cols=6,
     for i, (x, y) in pos.items():
         ax.plot(x, y, 'o', color='white', markeredgecolor='black',
                 markersize=15, zorder=3)
-        ax.text(x, y, str(i), ha='center', va='center', fontsize=8, zorder=4)
+        ax.text(x, y, str(i), ha='center', va='center', fontsize=12, zorder=4)
 
-    ax.set_title(title, fontsize=13)
+    ax.set_title(title, fontsize=17)
     ax.set_aspect('equal')
     ax.margins(0.08)
     ax.axis('off')
@@ -120,7 +134,8 @@ def add_link_colorbar(fig, axes, vmin, vmax, n_levels=N_LINK_LEVELS,
     sm = ScalarMappable(norm=norm, cmap=cmap)
     cb = fig.colorbar(sm, ax=axes, boundaries=boundaries, ticks=boundaries,
                       fraction=0.025, pad=0.02)
-    cb.set_label(label)
+    cb.set_label(label, fontsize=16)
+    cb.ax.tick_params(labelsize=14)
     return cb
 
 
@@ -184,6 +199,35 @@ def make_panel_grid(n, panel_w=20, panel_h=12, max_cols=2):
     return fig, list(flat[:n])
 
 
+def make_signal_panel_grid(n, panel_w=20, panel_h=12, max_cols=2,
+                           height_ratios=(2, 1)):
+    """혼잡 신호 전용 그림의 패널 격자를 만든다.
+    부하 하나당 칸을 위아래로 쪼개 (위, 아래) 축 쌍을 돌려준다.
+    위 축은 T_est / T_max (틱 단위), 아래 축은 R_x (0~1) 를 그리는 자리다.
+    R_x 와 틱 단위 값은 크기 차이가 커서 같은 축에 겹치면 R_x 가 바닥에 눌린다.
+    두 축은 x 를 공유하므로 같은 시점이 세로로 정렬된다.
+    반환: (fig, [(ax_top, ax_bottom), ...])"""
+    import math
+    import matplotlib.pyplot as plt
+    cols = max(1, min(n, max_cols))
+    rows = math.ceil(n / cols)
+    fig = plt.figure(figsize=(panel_w * cols, panel_h * rows))
+    # 중첩 격자는 tight_layout 이 처리하지 못하므로 여백을 여기서 직접 정한다.
+    # top 을 0.94 로 두어 suptitle 자리를 남긴다.
+    outer = fig.add_gridspec(rows, cols, hspace=0.22, wspace=0.14,
+                             left=0.06, right=0.98, top=0.94, bottom=0.05)
+    pairs = []
+    for i in range(n):
+        r, c = divmod(i, cols)
+        inner = outer[r, c].subgridspec(2, 1, height_ratios=list(height_ratios),
+                                        hspace=0.06)
+        ax_top = fig.add_subplot(inner[0])
+        ax_bot = fig.add_subplot(inner[1], sharex=ax_top)
+        ax_top.tick_params(labelbottom=False)   # x 눈금은 아래 축에만
+        pairs.append((ax_top, ax_bot))
+    return fig, pairs
+
+
 METRIC_DOC = '지표_정의서.md'   # 산정 방법·주의사항을 모아둔 별도 문서
 
 
@@ -193,8 +237,8 @@ def write_metric_guide_md(md, doc=METRIC_DOC):
     md.write('## 지표 정의\n\n')
     md.write('- 전체 평균 ADT (틱) : ADT 그래프 중앙값 실선의 전체구간 시간평균. 작을수록 빠름.\n')
     md.write('- 전체 IQR 폭 (틱) : ADT 그래프 오차 막대 길이의 전체구간 평균. 작을수록 시드 간 일관.\n')
-    md.write('- 라우팅 결정당 이웃 조회 수 (개/결정) : 이웃 조회 총횟수 / 라우팅 결정 총횟수, 시드 간 중앙값.\n')
-    md.write('- 경로 변경률 (%) : next-hop 변경 총횟수 / 라우팅 결정 총횟수, 시드 간 중앙값. 차이 열은 %p.\n')
+    md.write('- 라우팅 결정당 이웃 조회 수 (개/결정) : 이웃 조회 총횟수 / 라우팅 결정 총횟수, 시드 간 평균.\n')
+    md.write('- 경로 변경률 (%) : next-hop 변경 총횟수 / 라우팅 결정 총횟수, 시드 간 평균. 차이 열은 %p.\n')
     md.write('- R_x (0~1) : 각 노드의 T_est/T_max 를 노드 평균한 혼잡 신호의 전체구간 시간평균.\n')
     md.write('- T_est (틱) : R_x 의 분자. 노드 평균의 전체구간 시간평균.\n')
     md.write('- T_max (틱) : R_x 의 분모. 노드 평균의 전체구간 시간평균.\n')
@@ -204,15 +248,27 @@ def write_metric_guide_md(md, doc=METRIC_DOC):
 
 
 
+DIAG_CHUNK_TICKS = 4000   # 진단 시계열 표를 몇 tick 단위로 묶어 보여줄지
+
+
 def write_diag_series_md(md, label, rx_med, echo_med, switch_med,
-                         echo_scalar, switch_scalar, n_chunks=10,
-                         t_est_med=None, t_max_med=None, stat_interval=100):
+                         echo_scalar, switch_scalar, n_chunks=None,
+                         t_est_med=None, t_max_med=None, stat_interval=100,
+                         chunk_ticks=DIAG_CHUNK_TICKS):
     """진단 시계열을 구간 평균 표로 md 에 쓴다.
+    구간 크기는 chunk_ticks (기본 4000 tick) 로 정한다. 실행 길이가 바뀌어도 tick 간격이
+    유지되도록 표본 수에서 총 tick 을 역산해 구간 수를 구한다.
+    n_chunks 를 직접 넘기면 그 값을 그대로 쓴다 (구간 수를 고정하고 싶을 때).
     t_est_med / t_max_med 를 넘기면 R_x 의 분자·분모 열이 함께 나온다.
     세 열 모두 같은 규칙(구간 평균 + 끝 행은 전체 시간평균)을 쓴다 — R_x 의 전체 평균이
     실제로 나눗셈에 쓰인 분자·분모의 시간평균과 대응해야 분해가 성립하기 때문.
-    에코·변경률의 끝 행만 총합 기준 스칼라라 10구간 평균과 다를 수 있다."""
+    에코·변경률의 끝 행만 총합 기준 스칼라라 구간 평균과 다를 수 있다."""
     has_t = t_est_med is not None and t_max_med is not None
+
+    if n_chunks is None:
+        n_samples = len(rx_med) if rx_med is not None else 0
+        total_ticks = n_samples * stat_interval
+        n_chunks = max(1, round(total_ticks / chunk_ticks)) if total_ticks else 1
 
     md.write(f"#### 진단 시계열 (구간 평균, {label})\n\n")
     if has_t:
@@ -228,7 +284,7 @@ def write_diag_series_md(md, label, rx_med, echo_med, switch_med,
     sw_c = chunk_avg(switch_med, n_chunks)
     te_c = chunk_avg(t_est_med, n_chunks) if has_t else None
     tm_c = chunk_avg(t_max_med, n_chunks) if has_t else None
-    # 구간 번호(1,2,3…) 대신 그 구간이 끝나는 tick 을 라벨로 쓴다 (2000, 4000, …).
+    # 구간 번호(1,2,3…) 대신 그 구간이 끝나는 tick 을 라벨로 쓴다 (4000, 8000, …).
     ends = chunk_end_ticks(len(rx_med) if rx_med is not None else 0,
                            n_chunks, stat_interval)
 
@@ -247,3 +303,33 @@ def write_diag_series_md(md, label, rx_med, echo_med, switch_med,
     else:
         md.write(f"| 전체 평균 | {series_overall(rx_med):.3f} | "
                  f"{echo_scalar:.2f} | {switch_scalar * 100:.1f}% |\n\n")
+
+
+# -----------------------------------------------------------------------------
+# 토폴로지 이름 / 파일명 태그 자동 판별
+# - 6x6 격자는 변형(링크 50 개)과 완전 격자(링크 60 개) 두 종이 모두 36 노드라
+#   노드 수만으로는 구분되지 않는다. 그래서 링크 수까지 함께 본다.
+# - main 스크립트는 import 한 줄만 바꾸면 그래프 제목·md 제목·파일명이 함께 따라온다.
+# -----------------------------------------------------------------------------
+_TOPO_NAME_BY_NODES = {14: 'NSFNET', 15: 'PQ'}
+_TOPO_TAG_BY_NODES  = {14: 'NSFNET', 15: 'PQ'}
+
+
+def _link_count(adjacency):
+    """무방향 링크 수 (인접 리스트 길이 합의 절반)."""
+    return sum(len(v) for v in adjacency.values()) // 2
+
+
+def topo_name(num_nodes, adjacency):
+    """그래프·md 제목에 쓰는 토폴로지 이름."""
+    if num_nodes == 36:
+        return ('6x6 Regular Grid' if _link_count(adjacency) >= 60
+                else '6x6 Irregular Grid')
+    return _TOPO_NAME_BY_NODES.get(num_nodes, f'{num_nodes}-node')
+
+
+def topo_tag(num_nodes, adjacency):
+    """결과 파일명에 쓰는 짧은 태그."""
+    if num_nodes == 36:
+        return 'GRIDFULL' if _link_count(adjacency) >= 60 else 'GRID'
+    return _TOPO_TAG_BY_NODES.get(num_nodes, f'{num_nodes}N')

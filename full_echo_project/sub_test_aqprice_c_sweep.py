@@ -12,7 +12,9 @@ import matplotlib.pyplot as plt
 plt.rcParams['font.family'] = 'Malgun Gothic'   # Windows 한글 폰트 (그래프 한글 깨짐 방지)
 plt.rcParams['axes.unicode_minus'] = False       # 마이너스 기호 깨짐 방지
 from simulator import Simulator
+import diagnostics as diag
 from topology_grid import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACENCY
+# from topology_sub_test_grid_full import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACENCY
 
 SEED = 100
 
@@ -20,8 +22,8 @@ TOPOLOGY_GRID = {'num_nodes': GRID_NUM_NODES, 'adjacency': GRID_ADJACENCY}
 
 
 def topo_name(n):
-    """노드 수로 토폴로지 이름 자동 판별 (import 만 바꾸면 제목도 자동 반영)."""
-    return {36: '6x6 Grid', 14: 'NSFNET', 15: 'PQ'}.get(n, f'{n}-node')
+    """토폴로지 이름 자동 판별. 노드 수가 같은 격자 두 종은 링크 수로 가른다."""
+    return diag.topo_name(n, GRID_ADJACENCY)
 
 # -------------------------------------------------------------------------
 # 파라미터 설정 (AQRERM 논문 기준)
@@ -58,7 +60,8 @@ EXPERIMENTS = [
 def run_all():
     fig, axes = plt.subplots(1, len(EXPERIMENTS), figsize=(30, 8), squeeze=False)
     axes = axes.flatten()  # EXPERIMENTS 가 1 개여도 1D 배열로 유지
-    fig.suptitle(f"{topo_name(GRID_NUM_NODES)} — aqprice c-sweep (L={L}, seed={SEED})")
+    fig.suptitle(f"{topo_name(GRID_NUM_NODES)} — aqprice c-sweep (L={L}, seed={SEED})",
+                 fontsize=22, y=0.99)
 
     with open(MD_PATH, 'w', encoding='utf-8') as md:
         md.write(f'# {topo_name(GRID_NUM_NODES)} AQPRICE c-sweep\n\n')
@@ -125,13 +128,15 @@ def run_all():
                 ax.plot(x_axis, adt, label=label, color=color, linestyle=':')
 
             md.write("\n")
-            ax.set_title(f"λ={lam}")
-            ax.set_xlabel('Simulator Time')
-            ax.set_ylabel('Average Delivery Time')
-            ax.legend(loc='best', fontsize=9)
+            ax.set_title(f"λ={lam}", fontsize=20)
+            ax.set_xlabel('Simulator Time', fontsize=18)
+            ax.set_ylabel('Average Delivery Time', fontsize=18)
+            ax.tick_params(axis='both', labelsize=16)
+            ax.legend(loc='best', fontsize=15)
             ax.grid(True, alpha=0.3)
 
-    plt.tight_layout()
+    # rect 위쪽을 0.96 으로 잘라 suptitle 자리를 남긴다 (제목이 패널 제목과 겹치지 않게)
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
     filename = 'result_aqprice_c_sweep.png'
     plt.savefig(filename, dpi=150)
     print(f"\n결과 저장: {filename}")

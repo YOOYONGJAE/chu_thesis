@@ -14,9 +14,10 @@ plt.rcParams['font.family'] = 'Malgun Gothic'   # Windows 한글 폰트 (그래�
 plt.rcParams['axes.unicode_minus'] = False       # 마이너스 기호 깨짐 방지
 from simulator import Simulator
 import diagnostics as diag
-# from topology_grid import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACENCY
-from topology_nsfnet import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACENCY
-# from topology_pq import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACENCY
+from topology_grid import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACENCY
+# from topology_nsfnet import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACENCY
+# from topology_sub_test_pq import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACENCY
+# from topology_sub_test_grid_full import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACENCY
 
 # -------------------------------------------------------------------------
 # 파라미터 설정
@@ -30,28 +31,31 @@ BASE_PARAMS = {'eta': ETA, 'k': K, 'L': L, 'c': C}
 TOPOLOGY_GRID = {'num_nodes': GRID_NUM_NODES, 'adjacency': GRID_ADJACENCY}
 
 def topo_name(n):
-    """노드 수로 토폴로지 이름 자동 판별 (import 만 바꾸면 제목도 자동 반영)."""
-    return {36: '6x6 Grid', 14: 'NSFNET', 15: 'PQ'}.get(n, f'{n}-node')
+    """토폴로지 이름 자동 판별. 노드 수가 같은 격자 두 종은 링크 수로 가른다.
+    (import 한 줄만 바꾸면 제목과 파일명이 함께 따라온다.)"""
+    return diag.topo_name(n, GRID_ADJACENCY)
 
 
 # -------------------------------------------------------------------------
-# 비교 대상 알고리즘 (4종)
-# - q_routing : Boyan & Littman 1994. y* 만 단일 업데이트, echo 없음
-# - aqfe      : Adaptive Q-routing with Full Echo. 매 라우팅 전 이웃 echo
-# - aqrerm    : Random Echo + Route Memory. 확률 p = T_est/T_max 로 부분 echo
-# - aqprice    : 포인트 예산 게이트 + pre-echo + c·queue 페널티 (제안 기법)
+# 비교 대상 알고리즘
+# - q_routing   : Boyan & Littman 1994. y* 만 단일 업데이트, echo 없음
+# - aqfe        : Adaptive Q-routing with Full Echo. 에코는 하되 선택은 갱신 전 Q-table 로
+# - aqrerm      : Random Echo + Route Memory. 확률 p = T_est/T_max 로 부분 echo
+# - aqprice     : 포인트 예산 게이트 + pre-echo + c·queue 페널티 (제안 기법)
 # -------------------------------------------------------------------------
 ALGORITHMS = [
-    'q_routing',
-    'aqfe',
+    # 'q_routing',
+    # 'aqfe',
     'aqrerm',
     'aqprice',
 ]
 LABELS = {
     'q_routing': 'Q-routing',
     'aqfe':      'AQFE',
-    'aqrerm':    'AQRERM',
-    'aqprice':    'AQPRICE',
+    # 'aqrerm':    'AQRERM',
+    # 'aqprice':    'AQPRICE',
+    'aqrerm': 'AQRERM',
+    'aqprice': 'PROPOSED ALGORITHM',
 }
 # 적녹색약 친화 (Wong palette)
 COLORS = {
@@ -69,28 +73,24 @@ STAT_INTERVAL = 100
 EXPERIMENTS = [
     # 4 단계 부하 — 저 / 중저 / 중고 / 고. 모든 실험 공통.
     # 고부하 상한을 3.8 로 둔 이유 : AQRERM 은 발산하고 AQPRICE 는 정착하는 경계 지점.
-    # {'lam': 2.5, 'total_ticks': 20000},   # 저부하
-    # {'lam': 3.0, 'total_ticks': 20000},   # 중저부하
-    # {'lam': 3.1, 'total_ticks': 20000},   # 중저부하
-    # {'lam': 3.3, 'total_ticks': 20000},   # 중고부하
-    # {'lam': 3.4, 'total_ticks': 20000},   # 중고부하
-    # {'lam': 3.2, 'total_ticks': 20000},   # 중고부하
-    {'lam': 3.5, 'total_ticks': 20000},   # 중고부하
-    {'lam': 3.8, 'total_ticks': 20000},   # 고부하
-    {'lam': 4.1, 'total_ticks': 20000},   # 중부하
-    {'lam': 4.4, 'total_ticks': 20000},   # 중부하
-    # {'lam': 3.8, 'total_ticks': 100000},   # 고부하 + 특별실험
+    # {'lam': 2.5, 'total_ticks': 20000},   
+    {'lam': 3.0, 'total_ticks': 20000},   
+    {'lam': 3.5, 'total_ticks': 20000},   
+    {'lam': 3.8, 'total_ticks': 20000},   
+    # {'lam': 4.1, 'total_ticks': 20000},   
+    # {'lam': 4.4, 'total_ticks': 20000},   
 ]
 
 # 파일명 태그: (토폴로지, 부하, 틱수). 토폴로지·틱수는 자동, 부하 태그는 수동.
-TOPO_TAG   = {36: 'GRID', 14: 'NSFNET', 15: 'PQ'}.get(GRID_NUM_NODES, f'{GRID_NUM_NODES}N')
+TOPO_TAG   = diag.topo_tag(GRID_NUM_NODES, GRID_ADJACENCY)
 # RESULT_TAG = 'LOW'   # 부하 표기 (수동): LOW / HIGH 등
 # RESULT_TAG = 'HIGH'   # 부하 표기 (수동): LOW / HIGH 등
-RESULT_TAG = '4LVL'   # 부하 표기 (수동): LOW / HIGH 등
+RESULT_TAG = '3LVL'   # 부하 표기 (수동): LOW / HIGH 등
 _BASENAME  = f'result_lineage({TOPO_TAG},{RESULT_TAG},{EXPERIMENTS[0]["total_ticks"]})'
-MD_PATH       = f'{_BASENAME}.md'
-PNG_PATH      = f'{_BASENAME}.png'
-LINK_PNG_PATH = f'{_BASENAME}_linkuse.png'
+MD_PATH        = f'{_BASENAME}.md'
+PNG_PATH       = f'{_BASENAME}.png'
+LINK_PNG_PATH  = f'{_BASENAME}_linkuse.png'
+SIGNAL_PNG_PATH = f'{_BASENAME}_signal.png'   # R_x / T_est / T_max 전용 그림
 
 
 # -------------------------------------------------------------------------
@@ -110,10 +110,20 @@ def run_one(algo, lam, total_ticks, seed):
 def run_all():
     # 패널 배치 — 부하 4개면 2x2. 패널 하나당 크기가 고정이라 실험 수가 달라져도 비율 유지.
     fig, axes = diag.make_panel_grid(len(EXPERIMENTS))
+    # 혼잡 신호 전용 그림 — 부하마다 위(T_est/T_max) · 아래(R_x) 두 축
+    figS, sig_axes = diag.make_signal_panel_grid(len(EXPERIMENTS))
     active_labels = ' / '.join(LABELS[a] for a in ALGORITHMS)
     fig.suptitle(
         f"{topo_name(GRID_NUM_NODES)} — {active_labels} "
-        f"(c={C}, seeds n={len(SEEDS)}, median + IQR band)"
+        f"(c={C}, seeds n={len(SEEDS)}, median + IQR band)",
+        fontsize=22,
+        y=0.99,
+    )
+    figS.suptitle(
+        f"{topo_name(GRID_NUM_NODES)} — {active_labels} "
+        f"(congestion signal: T_est / T_max / R_x, seeds n={len(SEEDS)})",
+        fontsize=22,
+        y=0.99,
     )
 
     with open(MD_PATH, 'w', encoding='utf-8') as md:
@@ -125,7 +135,8 @@ def run_all():
         diag.write_metric_guide_md(md)
 
         link_data = []   # [(lam, {algo: link_sum}), ...] — 링크 다이어그램용
-        for ax, exp in zip(axes, EXPERIMENTS):
+        for panel_idx, (ax, exp) in enumerate(zip(axes, EXPERIMENTS)):
+            ax_sig_t, ax_sig_r = sig_axes[panel_idx]   # 위: T_est/T_max, 아래: R_x
             lam = exp['lam']
             total_ticks = exp['total_ticks']
             x_axis = np.arange(1, total_ticks // STAT_INTERVAL + 1) * STAT_INTERVAL
@@ -193,7 +204,8 @@ def run_all():
                 yerr = np.vstack([median - q25, q75 - median])
                 spacing = max(1, len(x_axis) // 10)
                 offset = ALGORITHMS.index(algo) * spacing // len(ALGORITHMS)
-                ax.errorbar(x_axis, median, yerr=yerr,
+                ax.errorbar(x_axis, median, yerr=None, # 에러바 숨기기
+                # ax.errorbar(x_axis, median, yerr=yerr, # 에러바 표출하기
                             errorevery=(offset, spacing),
                             capsize=3, elinewidth=1.2, capthick=1.2,
                             label=label, color=color, linewidth=2.0)
@@ -202,13 +214,22 @@ def run_all():
                 # 구간을 나누지 않고 위에서 그린 실선(median)·띠(q75−q25)를 그대로 시간 평균한다.
                 overall_adt = float(np.nanmean(median))
                 overall_iqr = float(np.nanmean(q75 - q25))
-                echo_cost   = float(np.nanmedian(echo_costs))
-                switch_rate = float(np.nanmedian(switch_rates))
+                echo_cost   = float(np.mean(echo_costs))      # 시드 10개 값의 평균 (패킷 전달 통계와 같은 규칙)
+                switch_rate = float(np.mean(switch_rates))
                 # R_x 는 진단 시계열의 전체구간 평균 — 아래 시계열 표의 끝 행과 같은 값
                 rx_med = diag.median_series(rx_runs)
                 rx_overall = diag.series_overall(rx_med)
                 te_med = diag.median_series(te_runs)     # R_x 의 분자 (T_est 노드평균)
                 tm_med = diag.median_series(tm_runs)     # R_x 의 분모 (T_max 노드평균, 단조 증가)
+
+                # ---- 혼잡 신호 그림 — ADT 와 같은 100 tick 해상도로 그대로 그린다 ----
+                # 위 축은 틱 단위 두 값(T_est 실선 / T_max 파선), 아래 축은 그 비율인 R_x.
+                ax_sig_t.plot(x_axis, te_med, color=color, linestyle='-',
+                              linewidth=2.0, label=f'{label} T_est')
+                ax_sig_t.plot(x_axis, tm_med, color=color, linestyle='--',
+                              linewidth=2.0, label=f'{label} T_max')
+                ax_sig_r.plot(x_axis, rx_med, color=color, linestyle='-',
+                              linewidth=2.0, label=label)
                 print(f"    [지표] ADT={overall_adt:6.2f} IQR폭={overall_iqr:6.2f} "
                       f"에코={echo_cost:.2f} 변경률={switch_rate * 100:.1f}% R_x={rx_overall:.3f}")
                 md.write(f"\n- 전체 평균 ADT (중앙값 실선의 시간평균 // 단위 = 틱) : {overall_adt:.2f}\n")
@@ -234,17 +255,42 @@ def run_all():
                 md.write("\n")
                 per_algo_link[algo] = link_sum
 
-            ax.set_title(f"λ={lam}")
-            ax.set_xlabel('Simulator Time')
-            ax.set_ylabel('Average Delivery Time')
-            ax.legend(loc='best', fontsize=10)
+            ax.set_title(f"λ={lam}", fontsize=20)
+            ax.set_xlabel('Simulator Time', fontsize=18)
+            ax.set_ylabel('Average Delivery Time', fontsize=18)
+            ax.tick_params(axis='both', labelsize=16)
+            ax.legend(loc='best', fontsize=17)
             ax.grid(True, alpha=0.3)
             link_data.append((lam, per_algo_link))
 
-    plt.tight_layout()
-    plt.savefig(PNG_PATH, dpi=150)
+            # ---- 혼잡 신호 패널 마무리 ----
+            ax_sig_t.set_title(f"λ={lam}", fontsize=20)
+            ax_sig_t.set_ylabel('T_est / T_max (tick)', fontsize=18)
+            ax_sig_t.tick_params(axis='y', labelsize=16)
+            ax_sig_t.legend(loc='best', fontsize=15)
+            ax_sig_t.grid(True, alpha=0.3)
+            # AQPRICE 의 Echo 가격은 max(0.1, 1 - R_x) 이고 포인트 상한이 0.5 이므로
+            # R_x 가 0.5 아래로 내려가면 아무리 모아도 Full Echo 를 살 수 없다.
+            ax_sig_r.axhline(0.5, color='#666666', linestyle=':', linewidth=2.0,
+                             label='R_x = 0.5 (point cap)')
+            ax_sig_r.set_ylim(0.0, 1.0)
+            ax_sig_r.set_xlabel('Simulator Time', fontsize=18)
+            ax_sig_r.set_ylabel('R_x', fontsize=18)
+            ax_sig_r.tick_params(axis='both', labelsize=16)
+            ax_sig_r.legend(loc='best', fontsize=15)
+            ax_sig_r.grid(True, alpha=0.3)
+
+    # rect 위쪽을 0.96 으로 잘라 suptitle 자리를 남긴다 (제목이 패널 제목과 겹치지 않게)
+    # 그림이 둘이므로 plt 전역이 아니라 각 figure 객체를 명시해 저장한다.
+    fig.tight_layout(rect=[0, 0, 1, 0.96])
+    fig.savefig(PNG_PATH, dpi=150)
     print(f"\n결과 저장: {PNG_PATH}")
-    plt.close()
+    plt.close(fig)
+
+    # 신호 그림은 중첩 격자라 tight_layout 을 쓰지 않는다 (여백은 격자 생성 때 지정).
+    figS.savefig(SIGNAL_PNG_PATH, dpi=150)
+    print(f"혼잡 신호 저장: {SIGNAL_PNG_PATH}")
+    plt.close(figS)
 
     # ---- 링크 사용량 다이어그램 (그리드: 행=알고리즘, 열=부하). grid 만 ----
     if GRID_NUM_NODES == 36:
@@ -252,12 +298,12 @@ def run_all():
         figL, axesL = plt.subplots(nrows, ncols, figsize=(6 * ncols, 6 * nrows), squeeze=False)
         figL.suptitle(
             f"{topo_name(GRID_NUM_NODES)} — link usage  [color & width = usage level]",
-            fontsize=15)
+            fontsize=20)
         vmin, vmax = diag.link_usage_range([per[a] for (lam, per) in link_data for a in per])
         for r, algo in enumerate(ALGORITHMS):
             for c, (lam, per_algo) in enumerate(link_data):
                 diag.plot_link_thickness(axesL[r][c], per_algo[algo],
-                                         GRID_NUM_NODES, f"{algo}  λ={lam}",
+                                         GRID_NUM_NODES, f"{LABELS[algo]}  λ={lam}",
                                          vmin=vmin, vmax=vmax)
         diag.add_link_colorbar(figL, axesL.ravel().tolist(), vmin, vmax)
         figL.savefig(LINK_PNG_PATH, dpi=150, bbox_inches='tight')

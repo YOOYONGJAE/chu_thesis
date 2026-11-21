@@ -1,12 +1,14 @@
 # =============================================================================
-# [요약] AQPRICE 라우트 메모리 길이 비교 — L=0 / 1 / 2 / 3
-# - 같은 aqprice 를 라우트 메모리 길이만 다르게 비교 (요청노드 제외는 네 변형 모두 유지=기본)
-#   L=0 : 라우트 메모리 미사용 (AQPRICE 정식 기본)
-#   L=1/2/3 : 최근 방문 노드를 각각 1/2/3 개까지 다음 홉 후보에서 제외
-# - node.py 는 aqprice_L 로 이 길이를 제어 (기본 0)
-# - 6x6 grid, 10 시드, λ=3.8 만 (40000 tick). 지표표 + 그래프 생산
+# [요약] 큐 페널티 c 효과 비교 — 4 변형
+#   aqrerm_c    : AQRERM + 큐 페널티 c (aqrerm_c>0)
+#   aqrerm      : 순수 AQRERM (c 없음)
+#   aqprice_noc : AQPRICE 에서 c 제거 (c=0)
+#   aqprice     : AQPRICE (c 있음, 정식)
+# - 배경: PQ(15노드) 토폴로지 고부하에서 c 가 있는 AQPRICE 가 AQRERM 보다 오히려 발산하는
+#         현상을 관찰. c(이웃 큐 혼잡 반영)가 고부하에서 역효과인지 4 변형으로 확인.
+# - node.py 의 aqrerm_c(AQRERM 큐 페널티) / c(AQPRICE 큐 페널티) 로 제어
 # - 4 지표: 전체 평균 ADT / 전체 IQR 폭 / 라우팅 결정당 이웃 조회 수 / 경로 변경률 (구간 분할 없음)
-# - 산출물: result_aqprice_route_memory_L_changed.md / .png
+# - 산출물: result_c_effect_compare.md / .png
 # =============================================================================
 import random
 import numpy as np
@@ -17,48 +19,63 @@ plt.rcParams['font.family'] = 'Malgun Gothic'   # Windows 한글 폰트 (그래�
 plt.rcParams['axes.unicode_minus'] = False       # 마이너스 기호 깨짐 방지
 from simulator import Simulator
 import diagnostics as diag
-from topology_grid import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACENCY
-# from topology_nsfnet import NUM_NODES as GRID_NUM_NODES, ADJACENCY as GRID_ADJACENCY
+# 토폴로지 선택 — import 한 줄만 토글하면 제목과 파일명이 자동으로 따라온다.
+# from topology_sub_test_pq import NUM_NODES as PQ_NUM_NODES, ADJACENCY as PQ_ADJACENCY
+from topology_grid import NUM_NODES as PQ_NUM_NODES, ADJACENCY as PQ_ADJACENCY
+# from topology_sub_test_grid_full import NUM_NODES as PQ_NUM_NODES, ADJACENCY as PQ_ADJACENCY
+# from topology_nsfnet import NUM_NODES as PQ_NUM_NODES, ADJACENCY as PQ_ADJACENCY
+TOPO_NAME = diag.topo_name(PQ_NUM_NODES, PQ_ADJACENCY)
 
 # -------------------------------------------------------------------------
-# 파라미터 (aqprice_L 만 변형별로 덮어씀)
+# 파라미터 (c 관련만 변형별로 덮어씀)
 # -------------------------------------------------------------------------
 ETA = 0.9
 K   = 0.5
 L   = 3
-C   = 0.22
+C   = 0.22   # 큐 페널티 계수 (aqprice 의 c, aqrerm_c 에 동일 값 사용)
 BASE_PARAMS = {'eta': ETA, 'k': K, 'L': L, 'c': C}
 
-TOPOLOGY_GRID = {'num_nodes': GRID_NUM_NODES, 'adjacency': GRID_ADJACENCY}
-
-def topo_name(n):
-    """노드 수로 토폴로지 이름 자동 판별 (import 만 바꾸면 제목도 자동 반영)."""
-    return {36: '6x6 Grid', 14: 'NSFNET', 15: 'PQ'}.get(n, f'{n}-node')
-
+TOPOLOGY_PQ = {'num_nodes': PQ_NUM_NODES, 'adjacency': PQ_ADJACENCY}
 
 # -------------------------------------------------------------------------
-# 4 변형: 같은 aqprice, 라우트 메모리 길이만 다름 (요청노드 제외는 모두 기본 True 유지)
+# 4 변형: (algorithm, 덮어쓸 파라미터)
+#   c 를 켜고 끄며 AQRERM / AQPRICE 각각에서 큐 페널티 효과를 분리
 # -------------------------------------------------------------------------
-VARIANTS = ['L0', 'L3']
-REF_KEY  = 'L0'   # AQPRICE 정식 기본. 기준선·표기 기준
-VARIANT_L = {'L0': 0, 'L3': 3}
-LABELS = {
-    'L0': 'AQPRICE (L=0, no_Route_Memory)',  # AQPRICE 정식 기본
-    'L3': 'AQPRICE (L=3)',
+VARIANTS = [
+    # 'aqrerm_c', 
+    # 'aqrerm', 
+    'aqprice_noc', 
+    'aqprice'
+    ]
+VARIANT_CFG = {
+    'aqrerm_c':    {'algorithm': 'aqrerm',  'params': {'aqrerm_c': C}},   # AQRERM + c
+    'aqrerm':      {'algorithm': 'aqrerm',  'params': {'aqrerm_c': 0.0}}, # 순수 AQRERM
+    'aqprice_noc': {'algorithm': 'aqprice', 'params': {'c': 0.0}},        # AQPRICE - c
+    'aqprice':     {'algorithm': 'aqprice', 'params': {'c': C}},          # AQPRICE (정식)
 }
-LABELS_SHORT = {'L0': 'L=0(기본)', 'L3': 'L=3'}
+LABELS = {
+    'aqrerm_c':    'AQRERM + c',
+    'aqrerm':      'AQRERM',
+    'aqprice_noc': 'AQPRICE-c',
+    'aqprice':     'AQPRICE',
+}
+LABELS_SHORT = {
+    'aqrerm_c':    'AQRERM+c',
+    'aqrerm':      'AQRERM',
+    'aqprice_noc': 'AQPRICE-c',
+    'aqprice':     'AQPRICE',
+}
 COLORS = {
-    'L0': '#56B4E9',  # 하늘색 (기본)
-    # 'L1': '#E69F00',  # 주황
-    # 'L2': '#009E73',  # 초록
-    'L3': "#FF0000",  # 주홍
+    'aqrerm_c':    "#5EFF00",  # 분홍보라
+    'aqrerm':      '#D55E00',  # 주홍
+    'aqprice_noc': '#009E73',  # 초록
+    'aqprice':     '#56B4E9',  # 하늘색 (정식)
 }
 
 SEEDS = list(range(100, 1001, 100))   # 10 개 시드
 STAT_INTERVAL = 100
 
-
-# λ=3.8 만, 20000 tick
+# 고부하 위주 (발산 현상이 나타나는 구간)
 EXPERIMENTS = [
     # 4 단계 부하 — 저 / 중저 / 중고 / 고. 모든 실험 공통.
     # 고부하 상한을 3.8 로 둔 이유 : AQRERM 은 발산하고 AQPRICE 는 정착하는 경계 지점.
@@ -69,25 +86,24 @@ EXPERIMENTS = [
 ]
 
 # 파일명 태그: (토폴로지, 부하, 틱수). 토폴로지·틱수는 자동, 부하 태그는 수동.
-TOPO_TAG   = {36: 'GRID', 14: 'NSFNET', 15: 'PQ'}.get(GRID_NUM_NODES, f'{GRID_NUM_NODES}N')
-RESULT_TAG = 'LOW'   # 부하 표기 (수동): LOW / HIGH 등
-# RESULT_TAG = 'HIGH'   # 부하 표기 (수동): LOW / HIGH 등
-_BASENAME  = f'result_aqprice_route_memory_L_changed({TOPO_TAG},{RESULT_TAG},{EXPERIMENTS[0]["total_ticks"]})'
+TOPO_TAG   = diag.topo_tag(PQ_NUM_NODES, PQ_ADJACENCY)
+RESULT_TAG = 'HIGH'   # 부하 표기 (수동): LOW / HIGH 등
+_BASENAME  = f'result_c_effect_compare({TOPO_TAG},{RESULT_TAG},{EXPERIMENTS[0]["total_ticks"]})'
 MD_PATH       = f'{_BASENAME}.md'
 PNG_PATH      = f'{_BASENAME}.png'
 LINK_PNG_PATH = f'{_BASENAME}_linkuse.png'
 
 
 # -------------------------------------------------------------------------
-# 단일 (variant, lam, seed) 실행 헬퍼 — 항상 aqprice, aqprice_L 만 변형별로 교체
-# (aqprice_exclude_requester 는 안 넘기므로 네 변형 모두 기본 True = 요청노드 제외 유지)
+# 단일 (variant, lam, seed) 실행 헬퍼 — 변형별 algorithm + 파라미터 override
 # -------------------------------------------------------------------------
 def run_one(variant, lam, total_ticks, seed):
     random.seed(seed)
     np.random.seed(seed)
+    cfg = VARIANT_CFG[variant]
     params = dict(BASE_PARAMS)
-    params['aqprice_L'] = VARIANT_L[variant]
-    sim = Simulator(algorithm='aqprice', params=params, seed=seed, topology=TOPOLOGY_GRID)
+    params.update(cfg['params'])
+    sim = Simulator(algorithm=cfg['algorithm'], params=params, seed=seed, topology=TOPOLOGY_PQ)
     adt = sim.run(lam=lam, total_ticks=total_ticks, stat_interval=STAT_INTERVAL)
     return sim, adt
 
@@ -153,8 +169,8 @@ def run_lambda(ax, lam, total_ticks, md):
             'median':    np.nanmedian(adt_arr, axis=0),
             'q25':       np.nanpercentile(adt_arr, 25, axis=0),
             'q75':       np.nanpercentile(adt_arr, 75, axis=0),
-            'echo_cost':   float(np.nanmedian(echo_costs)),
-            'switch_rate': float(np.nanmedian(switch_rates)),
+            'echo_cost':   float(np.mean(echo_costs)),      # 시드 10개 값의 평균 (패킷 전달 통계와 같은 규칙)
+            'switch_rate': float(np.mean(switch_rates)),
             'rx_med':     diag.median_series(rx_runs),
             't_est_med':  diag.median_series(te_runs),
             't_max_med':  diag.median_series(tm_runs),
@@ -184,11 +200,11 @@ def run_lambda(ax, lam, total_ticks, md):
                     capsize=3, elinewidth=1.2, capthick=1.2,
                     label=LABELS[variant], color=COLORS[variant], linewidth=2.0)
 
-    ax.set_title(f"λ={lam} ({total_ticks} ticks)", fontsize=16)
-    ax.set_xlabel('Simulator Time', fontsize=14)
-    ax.set_ylabel('Average Delivery Time', fontsize=14)
-    ax.tick_params(axis='both', labelsize=12)
-    ax.legend(loc='upper right', fontsize=12)
+    ax.set_title(f"λ={lam} ({TOPO_NAME})", fontsize=20)
+    ax.set_xlabel('Simulator Time', fontsize=18)
+    ax.set_ylabel('Average Delivery Time', fontsize=18)
+    ax.tick_params(axis='both', labelsize=16)
+    ax.legend(loc='upper right', fontsize=17)
     ax.grid(True, alpha=0.3)
 
     # ---- MD 표 (변형별 열, 원값. 4 지표) ----
@@ -198,65 +214,21 @@ def run_lambda(ax, lam, total_ticks, md):
     def row(name, fmt):
         return f"| {name} | " + " | ".join(fmt(v) for v in VARIANTS) + " |\n"
 
-    # 변형이 정확히 두 개일 때는 기준(REF_KEY) 대비 차이 열을 덧붙여
-    # 다른 2자 비교 스크립트(aqrerm_vs_aqprice, inline_compare)와 같은 형식으로 낸다.
-    # 셋 이상이면 어느 쌍의 차이인지 모호해지므로 원값 표만 낸다.
-    two_way = (len(VARIANTS) == 2)
-    if two_way:
-        alt = [v for v in VARIANTS if v != REF_KEY][0]   # 기준이 아닌 쪽
-        m_ref, m_alt = metrics[REF_KEY], metrics[alt]
-        r_ref, r_alt = results[REF_KEY], results[alt]
-        adt_diff = m_alt['overall'] - m_ref['overall']
-
-        def row_d(name, fmt, diff_txt):
-            """원값 열들 뒤에 차이 열 하나를 붙인 행."""
-            return (f"| {name} | " + " | ".join(fmt(v) for v in VARIANTS)
-                    + f" | {diff_txt} |\n")
-
-        # 차이 열은 모두 (기준이 아닌 쪽 − 기준) 절대 차이. 음수면 비교 대상이 그 지표에서 더 작다.
-        md.write(f"| 지표 | {cols} | 차이 ({LABELS_SHORT[alt]}−{LABELS_SHORT[REF_KEY]}) |\n")
-        md.write("|---" + "|---:" * (len(VARIANTS) + 1) + "|\n")
-        md.write(row_d("전체 평균 ADT (중앙값 실선의 시간평균 // 단위 = 틱)",
-                       lambda v: f"{metrics[v]['overall']:.2f}",
-                       f"{adt_diff:+.2f}"))
-        md.write(row_d("전체 IQR 폭 (띠 평균 폭 // 단위 = 틱)",
-                       lambda v: f"{metrics[v]['overall_iqr']:.2f}",
-                       f"{m_alt['overall_iqr'] - m_ref['overall_iqr']:+.2f}"))
-        md.write(row_d("라우팅 결정당 이웃 조회 수 (전체 평균 // 단위 = 개/결정)",
-                       lambda v: f"{results[v]['echo_cost']:.2f}",
-                       f"{r_alt['echo_cost'] - r_ref['echo_cost']:+.2f}"))
-        # 경로 변경률은 비율이라 백분율로, 차이는 두 백분율의 차이이므로 %p 로 적는다.
-        md.write(row_d("경로 변경률 (전체 평균 // 단위 = %)",
-                       lambda v: f"{results[v]['switch_rate'] * 100:.1f}%",
-                       f"{(r_alt['switch_rate'] - r_ref['switch_rate']) * 100:+.1f}%p"))
-        # R_x 는 진단 시계열의 전체구간 평균 (아래 시계열 표 끝 행과 같은 값)
-        rx_ref = diag.series_overall(r_ref['rx_med'])
-        rx_alt = diag.series_overall(r_alt['rx_med'])
-        md.write(row_d("R_x (전체 평균, 혼잡 신호 // 단위 없음, 0~1 비율)",
-                       lambda v: f"{diag.series_overall(results[v]['rx_med']):.3f}",
-                       f"{rx_alt - rx_ref:+.3f}"))
-        # R_x 의 분자·분모. 둘 다 전체구간 시간평균 (R_x 와 같은 요약 규칙).
-        te_ref, te_alt = diag.series_overall(r_ref['t_est_med']), diag.series_overall(r_alt['t_est_med'])
-        tm_ref, tm_alt = diag.series_overall(r_ref['t_max_med']),   diag.series_overall(r_alt['t_max_med'])
-        md.write(row_d("T_est (전체 평균, R_x 분자 // 단위 = 틱)",
-                       lambda v: f"{diag.series_overall(results[v]['t_est_med']):.2f}",
-                       f"{te_alt - te_ref:+.2f}"))
-        md.write(row_d("T_max (전체 평균, R_x 분모 // 단위 = 틱)",
-                       lambda v: f"{diag.series_overall(results[v]['t_max_med']):.2f}",
-                       f"{tm_alt - tm_ref:+.2f}"))
-    else:
-        md.write(f"| 지표 | {cols} |\n")
-        md.write(align)
-        md.write(row("전체 평균 ADT (중앙값 실선의 시간평균 // 단위 = 틱)", lambda v: f"{metrics[v]['overall']:.2f}"))
-        md.write(row("전체 IQR 폭 (띠 평균 폭 // 단위 = 틱)",              lambda v: f"{metrics[v]['overall_iqr']:.2f}"))
-        md.write(row("라우팅 결정당 이웃 조회 수 (전체 평균 // 단위 = 개/결정)", lambda v: f"{results[v]['echo_cost']:.2f}"))
-        md.write(row("경로 변경률 (전체 평균 // 단위 = %)",        lambda v: f"{results[v]['switch_rate'] * 100:.1f}%"))
-        md.write(row("R_x (전체 평균, 혼잡 신호 // 단위 없음, 0~1 비율)",
-                     lambda v: f"{diag.series_overall(results[v]['rx_med']):.3f}"))
-        md.write(row("T_est (전체 평균, R_x 분자 // 단위 = 틱)",
-                     lambda v: f"{diag.series_overall(results[v]['t_est_med']):.2f}"))
-        md.write(row("T_max (전체 평균, R_x 분모 // 단위 = 틱)",
-                     lambda v: f"{diag.series_overall(results[v]['t_max_med']):.2f}"))
+    md.write(f"| 지표 | {cols} |\n")
+    md.write(align)
+    md.write(row("전체 평균 ADT (중앙값 실선의 시간평균 // 단위 = 틱)", lambda v: f"{metrics[v]['overall']:.2f}"))
+    md.write(row("전체 IQR 폭 (띠 평균 폭 // 단위 = 틱)",              lambda v: f"{metrics[v]['overall_iqr']:.2f}"))
+    md.write(row("라우팅 결정당 이웃 조회 수 (전체 평균 // 단위 = 개/결정)", lambda v: f"{results[v]['echo_cost']:.2f}"))
+    # 경로 변경률은 비율이라 백분율로 적는다.
+    md.write(row("경로 변경률 (전체 평균 // 단위 = %)",        lambda v: f"{results[v]['switch_rate'] * 100:.1f}%"))
+    # R_x 는 진단 시계열의 전체구간 평균 (아래 시계열 표의 '전체 평균' 과 같은 값)
+    md.write(row("R_x (전체 평균, 혼잡 신호 // 단위 없음, 0~1 비율)",
+                 lambda v: f"{diag.series_overall(results[v]['rx_med']):.3f}"))
+    # R_x 의 분자·분모. 둘 다 전체구간 시간평균 (R_x 와 같은 요약 규칙).
+    md.write(row("T_est (전체 평균, R_x 분자 // 단위 = 틱)",
+                 lambda v: f"{diag.series_overall(results[v]['t_est_med']):.2f}"))
+    md.write(row("T_max (전체 평균, R_x 분모 // 단위 = 틱)",
+                 lambda v: f"{diag.series_overall(results[v]['t_max_med']):.2f}"))
     md.write("\n")
 
     # ---- MD 진단 시계열 (변형별 구간 평균 + 전체 평균) ----
@@ -287,17 +259,15 @@ def run_lambda(ax, lam, total_ticks, md):
         md.write("\n")
 
     # ---- 콘솔 출력 ----
-    head = " | ".join(f"{LABELS_SHORT[v]:>12}" for v in VARIANTS)
-    print(f"  {'지표':<24} | {head}")
+    head = " | ".join(f"{LABELS_SHORT[v]:>10}" for v in VARIANTS)
+    print(f"  {'지표':<22} | {head}")
 
     def prow(name, fmt):
-        vals = " | ".join(f"{fmt(v):>12}" for v in VARIANTS)
-        print(f"  {name:<24} | {vals}")
+        vals = " | ".join(f"{fmt(v):>10}" for v in VARIANTS)
+        print(f"  {name:<22} | {vals}")
 
     prow("전체 평균 ADT", lambda v: f"{metrics[v]['overall']:.2f}")
     prow("전체 IQR 폭",   lambda v: f"{metrics[v]['overall_iqr']:.2f}")
-    if two_way:
-        print(f"  {'→ ADT 차이(기준=' + LABELS_SHORT[REF_KEY] + ')':<24} | {adt_diff:>+11.2f}")
 
     # 링크 다이어그램용: 변형별 시드 합산 link_usage 반환
     return {v: results[v]['link_sum'] for v in VARIANTS}
@@ -310,30 +280,29 @@ def run_all():
     # 패널 배치 — 부하 4개면 2x2. 패널 하나당 크기가 고정이라 실험 수가 달라져도 비율 유지.
     fig, axes = diag.make_panel_grid(len(EXPERIMENTS))
     fig.suptitle(
-        f"{topo_name(GRID_NUM_NODES)} — AQPRICE Route Memory length compare (L=0/1/2/3)  "
-        f"(c={C}, seeds n={len(SEEDS)})",
-        fontsize=17,
+        f"{TOPO_NAME} — Queue-penalty c effect compare (AQRERM+c / AQRERM / AQPRICE-c / AQPRICE)  "
+        f"(seeds={SEEDS[0]}~{SEEDS[-1]}, n={len(SEEDS)})",
+        fontsize=22,
+        y=0.99,
     )
 
     with open(MD_PATH, 'w', encoding='utf-8') as md:
-        md.write('# AQPRICE 라우트 메모리 길이 비교 \n\n')
+        md.write(f'# 큐 페널티 c 효과 비교 ({TOPO_NAME}, 4 변형)\n\n')
         md.write(f'- Seeds: {SEEDS}\n')
         md.write(f'- Variants: {[LABELS[v] for v in VARIANTS]}\n')
-        md.write(f'- BASE_PARAMS: {BASE_PARAMS} (aqprice_L 만 변형별로 0/1/2/3, 요청노드 제외는 모두 유지)\n')
+        md.write(f'- BASE_PARAMS: {BASE_PARAMS} (c={C})\n')
+        md.write(f'- 변형 설정:\n')
+        for v in VARIANTS:
+            cfg = VARIANT_CFG[v]
+            md.write(f"  - {v} : algorithm={cfg['algorithm']}, override={cfg['params']}\n")
         md.write(f'- STAT_INTERVAL: {STAT_INTERVAL}\n\n')
 
         md.write('## 출력 구성\n\n')
-        md.write(f'- 각 변형은 라우트 메모리 길이(L)만 다르다. L=0 은 라우트 메모리 미사용(AQPRICE 정식 기본), '
-                 f'L>0 은 최근 방문 노드를 L 개까지 다음 홉 후보에서 제외. 요청노드 제외는 모두 유지.\n')
-        md.write(f'- 이번 실행의 변형별 aqprice_L: {VARIANT_L}\n')
+        md.write('- 배경 : PQ 토폴로지 고부하에서 c(이웃 큐 혼잡 반영)가 있는 AQPRICE 가 AQRERM 보다 발산하는 현상 관찰.\n')
+        md.write('  c 를 AQRERM 에 붙이고(aqrerm_c) AQPRICE 에서 빼서(c=0) c 의 순효과를 4 변형으로 분리.\n')
         md.write('- 성능 비교표 : 전체 평균 ADT(그래프 중앙값 실선의 시간평균)와 전체 IQR 폭(그래프 띠의 평균 폭). 구간 분할 없이 실행 전체를 요약.\n')
-        if len(VARIANTS) == 2:
-            _alt = [v for v in VARIANTS if v != REF_KEY][0]
-            md.write(f'- 차이 열 : 기준은 {LABELS_SHORT[REF_KEY]}, 비교 대상은 {LABELS_SHORT[_alt]}. '
-                     f'모두 {LABELS_SHORT[_alt]} − {LABELS_SHORT[REF_KEY]} 절대 차이이며, '
-                     f'음수면 {LABELS_SHORT[_alt]} 가 그 지표에서 더 작다.\n')
         md.write('- 진단 시계열 : R_x / 라우팅 결정당 이웃 조회 수 / 경로 변경률 구간 평균 + 끝의 전체 평균(에코·변경률 요약).\n')
-        md.write('- 링크 사용량 : 별도 PNG 에 grid 링크 굵기·색 + md 통과량 표.\n\n')
+        md.write('- 링크 사용량 : 별도 PNG 에 grid 링크 굵기·색(grid 만) + md 통과량 표.\n\n')
 
         diag.write_metric_guide_md(md)
 
@@ -342,31 +311,30 @@ def run_all():
             per_var = run_lambda(ax, exp['lam'], exp['total_ticks'], md)
             link_data.append((exp['lam'], per_var))
 
-    plt.tight_layout()
+    # rect 위쪽을 0.96 으로 잘라 suptitle 자리를 남긴다 (제목이 패널 제목과 겹치지 않게)
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
     plt.savefig(PNG_PATH, dpi=150)
     plt.close()
     print(f"\n결과 PNG : {PNG_PATH}")
     print(f"결과 MD  : {MD_PATH}")
 
-    # ---- 링크 사용량 다이어그램 (그리드: 행=변형, 열=부하). grid 만 ----
-    if GRID_NUM_NODES == 36:
+    # ---- 링크 사용량 다이어그램 (그리드: 행=변형, 열=부하). grid(36) 에서만 ----
+    if PQ_NUM_NODES == 36:
         nrows, ncols = len(VARIANTS), len(link_data)
         figL, axesL = plt.subplots(nrows, ncols, figsize=(6 * ncols, 6 * nrows), squeeze=False)
-        figL.suptitle(
-            f"{topo_name(GRID_NUM_NODES)} — link usage  [color & width = usage level]",
-            fontsize=15)
+        figL.suptitle(f"{TOPO_NAME} — link usage  [color & width = usage level]", fontsize=20)
         vmin, vmax = diag.link_usage_range([per[v] for (lam, per) in link_data for v in per])
         for r, variant in enumerate(VARIANTS):
             for c, (lam, per_var) in enumerate(link_data):
                 diag.plot_link_thickness(axesL[r][c], per_var[variant],
-                                         GRID_NUM_NODES, f"{variant}  λ={lam}",
+                                         PQ_NUM_NODES, f"{LABELS_SHORT[variant]}  λ={lam}",
                                          vmin=vmin, vmax=vmax)
         diag.add_link_colorbar(figL, axesL.ravel().tolist(), vmin, vmax)
         figL.savefig(LINK_PNG_PATH, dpi=150, bbox_inches='tight')
         plt.close(figL)
         print(f"결과 링크 PNG : {LINK_PNG_PATH}")
     else:
-        print("링크 다이어그램은 grid 에서만 생성 — 현재 grid 아님 (수치는 md 참조)")
+        print("링크 다이어그램은 grid(36) 에서만 생성 — 현재 grid 아님 (수치는 md 참조)")
 
 
 if __name__ == '__main__':

@@ -128,6 +128,21 @@ class Node:
         return min(candidates.values())
 
     # -------------------------------------------------------------------------
+    # 큐 페널티 — 이웃 y 를 거칠 때 그 노드의 큐에서 기다릴 시간의 대리값 (c · 큐길이)
+    #
+    # 단 y 가 곧 목적지이면 0 을 준다. simulator 는 next_hop == dst 인 순간 그 자리에서
+    # 전달을 끝내므로, 패킷이 목적지의 큐에 들어가지도 않고 목적지의 처리 기회를 쓰지도
+    # 않는다. 따라서 목적지의 큐 길이는 이 패킷의 전달시간에 아무 영향이 없다.
+    # 벌점을 주면 목적지를 코앞에 두고 다른 이웃으로 우회하는 선택이 생기는데,
+    # 직행이 1 tick 인 반면 우회는 최소 2 tick 이므로 어떤 경우에도 손해다.
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def queue_penalty(neighbor, dst, c_q, queue_len):
+        if neighbor == dst:
+            return 0.0
+        return c_q * queue_len
+
+    # -------------------------------------------------------------------------
     # 라우팅: 패킷을 받아 다음 홉 반환, Q 테이블 업데이트
     # -------------------------------------------------------------------------
     def route(self, packet, current_tick, all_nodes):
@@ -190,6 +205,8 @@ class Node:
         t_values = {n: all_nodes[n].best_estimate(dst) for n in self.neighbors}
         self.echo_query_count += len(self.neighbors)  # 모든 이웃 조회 (Full Echo)
 
+        # 선택은 갱신 전 Q-table 로 한다. 이번 에코로 받은 t_values 는 Q 갱신에만 쓰이고
+        # 현재 패킷의 다음 홉에는 반영되지 않는다 (다음 패킷부터 영향).
         y_star = min(self.neighbors, key=lambda n: self.Q[dst][n])
         q = current_tick - packet.queue_entry_tick
         s = 1
@@ -232,7 +249,8 @@ class Node:
         aqrerm_c = self.params.get('aqrerm_c', 0.0)
         if aqrerm_c > 0:
             y_star = min(candidates,
-                         key=lambda n: self.Q[dst][n] + aqrerm_c * len(all_nodes[n].queue))
+                         key=lambda n: self.Q[dst][n] + self.queue_penalty(
+                             n, dst, aqrerm_c, len(all_nodes[n].queue)))
         else:
             y_star = min(candidates, key=lambda n: self.Q[dst][n])
         q = current_tick - packet.queue_entry_tick
@@ -348,17 +366,18 @@ class Node:
                     self.last_known_queue[n] = len(all_nodes[n].queue)
 
                 def _score(n):
-                    if math.isfinite(t_values[n]):
-                        return t_values[n] + c_q * self.last_known_queue[n]
-                    else:
+                    if not math.isfinite(t_values[n]):
                         return float('inf')
+                    return t_values[n] + self.queue_penalty(
+                        n, dst, c_q, self.last_known_queue[n])
 
                 y_star = min(candidates, key=_score)
             else:
                 # 기존 Q + 이전 큐 캐시로 먼저 선택 (이번 에코 정보 사용 안 함)
                 y_star = min(
                     candidates,
-                    key=lambda n: self.Q[dst][n] + c_q * self.last_known_queue[n]
+                    key=lambda n: self.Q[dst][n] + self.queue_penalty(
+                        n, dst, c_q, self.last_known_queue[n])
                 )
                 # 선택 후 큐 캐시 갱신 (Q 갱신·다음 패킷용)
                 for n in self.neighbors:
@@ -380,7 +399,8 @@ class Node:
             # stale 캐시 기반 선정
             y_star = min(
                 candidates,
-                key=lambda n: self.Q[dst][n] + c_q * self.last_known_queue[n]
+                key=lambda n: self.Q[dst][n] + self.queue_penalty(
+                    n, dst, c_q, self.last_known_queue[n])
             )
             # y_star 만 update
             t = all_nodes[y_star].best_estimate(dst, exclude_node=exclude_req)
