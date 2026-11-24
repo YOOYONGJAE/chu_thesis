@@ -45,7 +45,7 @@ def topo_name(n):
 ALGORITHMS = ['aqrerm', 'aqprice']
 LABELS = {
     'aqrerm': 'AQRERM',
-    'aqprice': 'PROPOSED ALGORITHM',
+    'aqprice': 'AQPRICE',
 }
 COLORS = {
     'aqrerm':              "#FF0000",  # 분홍보라 (baseline)
@@ -60,7 +60,7 @@ TOTAL_TICKS = 20000
 TOPO_TAG   = diag.topo_tag(GRID_NUM_NODES, GRID_ADJACENCY)
 # RESULT_TAG = 'LOW'   # 부하 표기 (수동): LOW / HIGH 등
 # RESULT_TAG = 'HIGH'   # 부하 표기 (수동): LOW / HIGH 등
-RESULT_TAG = '3.2'   # 부하 표기 (수동): LOW / HIGH 등
+RESULT_TAG = '3LVL'   # 부하 표기 (수동): LOW / HIGH 등
 _BASENAME  = f'result_aqrerm_vs_aqprice({TOPO_TAG},{RESULT_TAG},{TOTAL_TICKS})'
 MD_PATH       = f'{_BASENAME}.md'
 PNG_PATH      = f'{_BASENAME}.png'
@@ -69,7 +69,7 @@ LINK_PNG_PATH = f'{_BASENAME}_linkuse.png'
 EXPERIMENTS = [
     # 4 단계 부하 — 저 / 중저 / 중고 / 고. 모든 실험 공통.
     # 고부하 상한을 3.8 로 둔 이유 : AQRERM 은 발산하고 AQPRICE 는 정착하는 경계 지점.
-    {'lam': 2.5, 'total_ticks': 20000},   # 저부하
+    # {'lam': 2.5, 'total_ticks': 20000},   # 저부하
     {'lam': 3.0, 'total_ticks': 20000},   # 중저부하
     # {'lam': 3.2, 'total_ticks': 20000},   # 중저부하
     {'lam': 3.5, 'total_ticks': 20000},   # 중고부하
@@ -120,6 +120,7 @@ def run_lambda(ax, lam, total_ticks, md):
         print(f"\n--- {label} ---")
         adt_runs = []
         echo_costs = []
+        echo_totals, route_totals = [], []   # 나누기 전 총횟수 (시드별, 36개 노드 합)
         switch_rates = []
         rx_runs, echo_runs, switch_runs, link_dicts = [], [], [], []
         te_runs, tm_runs = [], []          # R_x 의 분자·분모 시계열
@@ -136,7 +137,9 @@ def run_lambda(ax, lam, total_ticks, md):
             ec = (sim.total_echo_queries / sim.total_route_calls
                   if sim.total_route_calls > 0 else 0.0)
             echo_costs.append(ec)
-            sw = (sim.total_switches / sim.total_route_calls
+            echo_totals.append(sim.total_echo_queries)
+            route_totals.append(sim.total_route_calls)
+            sw =(sim.total_switches / sim.total_route_calls
                   if sim.total_route_calls > 0 else 0.0)
             switch_rates.append(sw)
             # 진단 시계열·링크 사용량 수집
@@ -153,6 +156,8 @@ def run_lambda(ax, lam, total_ticks, md):
             'q25':       np.nanpercentile(adt_arr, 25, axis=0),
             'q75':       np.nanpercentile(adt_arr, 75, axis=0),
             'echo_cost':   float(np.mean(echo_costs)),          # 진단 시계열 요약용 스칼라. 시드 10개 값의 평균
+            'echo_total':  float(np.mean(echo_totals)),         # 이웃 조회 총횟수, 시드 10개 평균
+            'route_total': float(np.mean(route_totals)),        # 라우팅 결정 총횟수, 시드 10개 평균
             'switch_rate': float(np.mean(switch_rates)),
             'rx_med':     diag.median_series(rx_runs),
             't_est_med':  diag.median_series(te_runs),
@@ -202,6 +207,9 @@ def run_lambda(ax, lam, total_ticks, md):
     # 진단 시계열 전체 평균 중 비교 지표(에코·변경률)를 위 표에도 함께. R_x 는 시계열에만.
     ar, pr = results['aqrerm'], results['aqprice']
     md.write(f"| 라우팅 결정당 이웃 조회 수 (전체 평균 // 단위 = 개/결정) | {ar['echo_cost']:.2f} | {pr['echo_cost']:.2f} | {pr['echo_cost'] - ar['echo_cost']:+.2f} |\n")
+    # 위 비율의 분자·분모. 시드마다 20000 tick 동안 36개 노드 합을 구하고 시드 10개를 평균.
+    md.write(f"| 이웃 조회 총횟수 (시드 10개 평균 // 단위 = 회) | {ar['echo_total']:,.0f} | {pr['echo_total']:,.0f} | {pr['echo_total'] - ar['echo_total']:+,.0f} |\n")
+    md.write(f"| 라우팅 결정 총횟수 (시드 10개 평균 // 단위 = 회) | {ar['route_total']:,.0f} | {pr['route_total']:,.0f} | {pr['route_total'] - ar['route_total']:+,.0f} |\n")
     # 경로 변경률은 비율이라 백분율로, 차이는 두 백분율의 차이이므로 %p 로 적는다.
     md.write(f"| 경로 변경률 (전체 평균 // 단위 = %) | {ar['switch_rate'] * 100:.1f}% | {pr['switch_rate'] * 100:.1f}% | "
              f"{(pr['switch_rate'] - ar['switch_rate']) * 100:+.1f}%p |\n")

@@ -42,6 +42,19 @@ class Node:
             for d in range(num_nodes) if d != node_id
         }
 
+        # 신뢰도 표 (CQ-Routing, Kumar & Miikkulainen 1999) — aqprice_conf 가 켜졌을 때만 쓰인다.
+        # C[dst][nbr] ∈ [0, 1] : Q[dst][nbr] 를 얼마나 믿을 수 있는가.
+        # 이웃이 곧 목적지인 칸은 1 로 고정, 나머지는 0 에서 시작.
+        # 매 tick 감쇠(C ← λ·C)는 갱신 tick 을 저장해 두고 조회할 때 λ^(경과 tick) 을 곱해 계산한다.
+        self.C = {
+            d: {n: (1.0 if n == d else 0.0) for n in neighbors}
+            for d in range(num_nodes) if d != node_id
+        }
+        self.C_tick = {
+            d: {n: 0 for n in neighbors}
+            for d in range(num_nodes) if d != node_id
+        }
+
         self.T_est = 0.0
         self.T_max = 1.0
 
@@ -141,6 +154,82 @@ class Node:
         if neighbor == dst:
             return 0.0
         return c_q * queue_len
+
+    # -------------------------------------------------------------------------
+    # 신뢰도 (CQ-Routing, Kumar & Miikkulainen 1999 식 2·3) — AQPRICE 실험용, aqprice_conf 토글
+    #
+    # conf_value   : 지금 tick 기준 신뢰도. 마지막 갱신 뒤 지난 tick 수만큼 λ 를 곱한다 (식 3 위쪽).
+    # best_estimate_conf : best_estimate 와 같은 최솟값 Q + 그 칸의 신뢰도 (에코에 함께 실어 보냄).
+    # conf_lr      : 학습률 = max(C_est, 1 - C_old) (식 2). 내 칸을 못 믿거나 받은 값을 믿을수록 크다.
+    # conf_set     : Q 를 갱신한 칸의 신뢰도를 C_old + lr·(C_est - C_old) 로 옮긴다 (식 3 아래쪽).
+    # -------------------------------------------------------------------------
+    def conf_value(self, dst, nbr, tick):
+        if nbr == dst:
+            return 1.0
+        lam = self.params.get('conf_lambda', 0.95)
+        return self.C[dst][nbr] * (lam ** (tick - self.C_tick[dst][nbr]))
+
+    def best_estimate_conf(self, dst, tick, exclude_node=None):
+        if dst == self.id:
+            return 0.0, 1.0
+        if dst not in self.Q:
+            return float('inf'), 0.0
+        cands = [n for n in self.neighbors if n != exclude_node]
+        if not cands:
+            cands = list(self.neighbors)   # best_estimate 와 같은 fallback
+        if not cands:
+            return float('inf'), 0.0
+        n_best = min(cands, key=lambda n: self.Q[dst][n])
+        return self.Q[dst][n_best], self.conf_value(dst, n_best, tick)
+
+    def conf_lr(self, dst, nbr, c_est, tick):
+        return max(c_est, 1.0 - self.conf_value(dst, nbr, tick))
+
+    def conf_set(self, dst, nbr, c_est, lr, tick):
+        if nbr == dst:
+            return                      # 이웃이 곧 목적지인 칸은 1 로 고정
+        c_old = self.conf_value(dst, nbr, tick)
+        self.C[dst][nbr] = c_old + lr * (c_est - c_old)
+        self.C_tick[dst][nbr] = tick
+
+    # -------------------------------------------------------------------------
+    # Dual Reinforcement Q-Routing 역방향 갱신 (AQPRICE 실험용, aqprice_dual 토글)
+    #
+    # 이 노드(x)가 출발지 src 인 패킷을 다음 홉 nbr (= 선택한 y_star) 로 보낼 때,
+    # 'x 에서 src 까지의 추정' 을 함께 보낸다고 본다 (원 논문처럼 패킷을 받는 노드만 갱신).
+    # nbr 은 그 값으로 자기 Q[src][x] ('x 에게 넘기면 src 까지 몇 틱') 를 갱신한다.
+    #   목표값 = q_n (nbr 의 큐 대기) + 1 (nbr → x 한 홉) + x 의 src 추정
+    # q_n : 원 논문 식 (4) 의 q_y (갱신하는 노드 자신의 큐 대기 시간) 에 해당한다.
+    #   정방향 갱신이 q (자기 큐 대기) 를 넣으므로, 역방향에서 빼면 x 칸만 q 만큼 싸 보인다.
+    #   노드는 tick 당 패킷 1 개를 처리하므로 nbr 의 현재 큐 길이를 예상 대기 틱으로 쓴다
+    #   (이 패킷은 다음 tick 에 nbr 큐의 맨 뒤에 붙는다).
+    # x 의 추정은 원 논문 식 (3) 처럼 x 의 모든 이웃 중 최솟값이다 (nbr 도 포함).
+    # x 의 최선 경로가 nbr 을 거치면 nbr 이 'x 를 거쳐 자기에게 돌아오는 길' 의 값을 배울 수 있다.
+    # (실험 1~4 는 nbr 을 빼고 계산했다. experiments.md 참고)
+    # 학습률 mode:
+    #   'eta'  : 정방향 y_star 갱신과 같은 eta
+    #   'eta2' : nbr 자신의 R_x · k (정방향 비-y_star 갱신과 같은 형태)
+    # 값 하나를 얹어 보내는 것이라 이웃 조회 수(echo_query_count)는 늘리지 않는다.
+    # -------------------------------------------------------------------------
+    def dual_backward_update(self, nbr, src, all_nodes, mode):
+        if nbr == src:
+            return                      # nbr 의 Q 테이블에는 자기 자신 행이 없다
+        nbr_node = all_nodes[nbr]
+        if src not in nbr_node.Q:
+            return
+        t_x = self.best_estimate(src)   # 모든 이웃 중 최솟값. x 가 src 자신이면 0
+        if not math.isfinite(t_x):
+            return
+        if mode == 'eta':
+            lr = self.params['eta']
+        elif mode == 'eta2':
+            rx_n = nbr_node.T_est / nbr_node.T_max if nbr_node.T_max > 0 else 0.0
+            lr = rx_n * self.params['k']
+        else:
+            raise ValueError(f"aqprice_dual 은 None / 'eta' / 'eta2' 중 하나여야 한다: {mode!r}")
+        q_n = len(nbr_node.queue)
+        old = nbr_node.Q[src][self.id]
+        nbr_node.Q[src][self.id] = old + lr * (q_n + 1 + t_x - old)
 
     # -------------------------------------------------------------------------
     # 라우팅: 패킷을 받아 다음 홉 반환, Q 테이블 업데이트
@@ -321,6 +410,25 @@ class Node:
         # 파라미터로 gr / b_max 를 크게 주는 방식과 달리, 한 tick 에 여러 패킷을 처리해도
         # 반드시 매 결정 Full Echo 가 되므로 '예산만 제거한 조건' 이 정확히 성립한다.
         point_gate = self.params.get('aqprice_point_gate', True)
+        # Dual Reinforcement 역방향 갱신 토글 — None(기본, AQPRICE 정식) / 'eta' / 'eta2' (학습률).
+        # 켜져 있으면 포인트 부족(Q-routing 모드)에서는 항상 다음 홉 y_star 한 곳을 갱신한다.
+        dual_mode = self.params.get('aqprice_dual', None)
+        # Full Echo 모드에서의 역방향 갱신 범위 (dual_mode 가 켜져 있을 때만 의미 있음)
+        #   None(기본) : Full Echo 모드에서는 갱신하지 않음
+        #   'all'      : 에코를 받은 이웃 전부
+        #   'ystar'    : 패킷을 받는 y_star 하나
+        dual_fe = self.params.get('aqprice_dual_fe', None)
+        # 신뢰도 학습률 토글 (CQ-Routing)
+        #   None(기본) : AQPRICE 정식 (y_star 는 eta, 선택하지 않은 이웃은 eta2)
+        #   'eta'      : y_star 갱신만 신뢰도 학습률, 선택하지 않은 이웃은 eta2 유지
+        #   'eta2'     : 선택하지 않은 이웃 갱신만 신뢰도 학습률, y_star 는 eta 유지 (두 모드 모두)
+        #   'both'     : y_star 와 선택하지 않은 이웃 모두 신뢰도 학습률
+        # 켜져 있으면 Q-value 를 고칠 때마다 그때 쓴 학습률로 그 Q-value 의 신뢰도도 고친다.
+        conf_mode = self.params.get('aqprice_conf', None)
+        if conf_mode not in (None, 'eta', 'eta2', 'both'):
+            raise ValueError(f"aqprice_conf 는 None / 'eta' / 'eta2' / 'both' 중 하나여야 한다: {conf_mode!r}")
+        conf_star  = conf_mode in ('eta', 'both')    # y_star 학습률을 신뢰도로
+        conf_other = conf_mode in ('eta2', 'both')   # 선택하지 않은 이웃 학습률을 신뢰도로
 
         self.update_T_est()
 
@@ -349,8 +457,15 @@ class Node:
             self.pfe_window_full_echo_count += 1
 
             # 1차: 모든 이웃의 fresh t_n 수집 (Full Echo)
-            t_values = {n: all_nodes[n].best_estimate(dst, exclude_node=exclude_req)
-                        for n in self.neighbors}
+            # 신뢰도가 켜져 있으면 각 이웃이 최솟값 Q 의 신뢰도(c_values)도 함께 보낸다.
+            if conf_mode is None:
+                t_values = {n: all_nodes[n].best_estimate(dst, exclude_node=exclude_req)
+                            for n in self.neighbors}
+            else:
+                t_values, c_values = {}, {}
+                for n in self.neighbors:
+                    t_values[n], c_values[n] = all_nodes[n].best_estimate_conf(
+                        dst, current_tick, exclude_node=exclude_req)
             self.echo_query_count += len(self.neighbors)  # Full Echo: 모든 이웃 조회
 
             # Inline 토글 — 이번 에코로 얻은 최신 정보를 '현재 패킷 선택'에 쓸지 여부.
@@ -384,16 +499,40 @@ class Node:
                     self.last_known_queue[n] = len(all_nodes[n].queue)
 
             # 3차: y_star eta, 비-y_star eta2 균등 update
-            self.Q[dst][y_star] += eta * (
+            # (신뢰도가 켜져 있으면 aqprice_conf 에 따라 학습률을 max(C_est, 1-C_old) 로 바꾼다)
+            if conf_star:
+                lr_star = self.conf_lr(dst, y_star, c_values[y_star], current_tick)
+            else:
+                lr_star = eta
+            self.Q[dst][y_star] += lr_star * (
                 q + s + t_values[y_star] - self.Q[dst][y_star]
             )
+            if conf_mode is not None:
+                self.conf_set(dst, y_star, c_values[y_star], lr_star, current_tick)
             for n in self.neighbors:
                 if n == y_star:
                     continue
                 if math.isfinite(t_values[n]):
-                    self.Q[dst][n] += eta2 * (
+                    if conf_other:
+                        lr_n = self.conf_lr(dst, n, c_values[n], current_tick)
+                    else:
+                        lr_n = eta2
+                    self.Q[dst][n] += lr_n * (
                         q + s + t_values[n] - self.Q[dst][n]
                     )
+                    if conf_mode is not None:
+                        self.conf_set(dst, n, c_values[n], lr_n, current_tick)
+
+            # Dual 역방향 갱신 (Full Echo 모드) — aqprice_dual_fe 로 범위를 고른다.
+            # 갱신하는 칸이 이웃의 Q[src] 행이라 이번 결정의 선택·정방향 갱신에는 영향 없음.
+            if dual_mode is not None:
+                if dual_fe == 'all':
+                    for n in self.neighbors:
+                        self.dual_backward_update(n, packet.src, all_nodes, dual_mode)
+                elif dual_fe == 'ystar':
+                    self.dual_backward_update(y_star, packet.src, all_nodes, dual_mode)
+                elif dual_fe is not None:
+                    raise ValueError(f"aqprice_dual_fe 는 None / 'all' / 'ystar' 중 하나여야 한다: {dual_fe!r}")
         else:
             # === Q-routing 모드 (포인트 부족) ===
             # stale 캐시 기반 선정
@@ -402,13 +541,27 @@ class Node:
                 key=lambda n: self.Q[dst][n] + self.queue_penalty(
                     n, dst, c_q, self.last_known_queue[n])
             )
-            # y_star 만 update
-            t = all_nodes[y_star].best_estimate(dst, exclude_node=exclude_req)
+            # y_star 만 update ('eta'/'both' 는 신뢰도 학습률, 'eta2' 는 eta 를 쓰되 신뢰도는 추적)
+            if conf_mode is None:
+                t = all_nodes[y_star].best_estimate(dst, exclude_node=exclude_req)
+                lr_star = eta
+            else:
+                t, c_star = all_nodes[y_star].best_estimate_conf(
+                    dst, current_tick, exclude_node=exclude_req)
+                lr_star = (self.conf_lr(dst, y_star, c_star, current_tick)
+                           if conf_star else eta)
             self.echo_query_count += 1  # 포인트 부족(Q-routing 모드): y_star 하나만 조회
             self.last_known_queue[y_star] = len(all_nodes[y_star].queue)
-            self.Q[dst][y_star] += eta * (
+            self.Q[dst][y_star] += lr_star * (
                 q + s + t - self.Q[dst][y_star]
             )
+            if conf_mode is not None:
+                self.conf_set(dst, y_star, c_star, lr_star, current_tick)
+            # Dual 역방향 갱신 — 포인트 부족(Q-routing 모드)일 때만, 이 패킷을 받을 y_star 한 곳.
+            # Full Echo 모드는 이미 이웃 전부를 갱신하므로 역방향 갱신을 더하지 않는다.
+            # (원 논문 DRQ 는 결정당 한 칸만 갱신하는 Q-routing 에 갱신을 하나 더한 것)
+            if dual_mode is not None:
+                self.dual_backward_update(y_star, packet.src, all_nodes, dual_mode)
 
         # Route Memory 갱신
         if L == 0:

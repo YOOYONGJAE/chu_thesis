@@ -311,8 +311,8 @@ def write_diag_series_md(md, label, rx_med, echo_med, switch_med,
 #   노드 수만으로는 구분되지 않는다. 그래서 링크 수까지 함께 본다.
 # - main 스크립트는 import 한 줄만 바꾸면 그래프 제목·md 제목·파일명이 함께 따라온다.
 # -----------------------------------------------------------------------------
-_TOPO_NAME_BY_NODES = {14: 'NSFNET', 15: 'PQ'}
-_TOPO_TAG_BY_NODES  = {14: 'NSFNET', 15: 'PQ'}
+_TOPO_NAME_BY_NODES = {14: 'NSFNET', 15: 'PQ', 32: '5-D Hypercube'}
+_TOPO_TAG_BY_NODES  = {14: 'NSFNET', 15: 'PQ', 32: 'HCUBE'}
 
 
 def _link_count(adjacency):

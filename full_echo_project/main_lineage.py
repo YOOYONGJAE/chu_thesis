@@ -156,6 +156,7 @@ def run_all():
 
                 adt_runs = []
                 echo_costs = []
+                echo_totals, route_totals = [], []   # 나누기 전 총횟수 (시드별, 36개 노드 합)
                 switch_rates = []
                 rx_runs, echo_runs, switch_runs, link_dicts = [], [], [], []
                 te_runs, tm_runs = [], []          # R_x 의 분자·분모 시계열
@@ -173,7 +174,9 @@ def run_all():
                     ec = (sim.total_echo_queries / sim.total_route_calls
                           if sim.total_route_calls > 0 else 0.0)
                     echo_costs.append(ec)
-                    sw = (sim.total_switches / sim.total_route_calls
+                    echo_totals.append(sim.total_echo_queries)
+                    route_totals.append(sim.total_route_calls)
+                    sw =(sim.total_switches / sim.total_route_calls
                           if sim.total_route_calls > 0 else 0.0)
                     switch_rates.append(sw)
                     rx_runs.append(sim.r_ratio_series)
@@ -235,6 +238,9 @@ def run_all():
                 md.write(f"\n- 전체 평균 ADT (중앙값 실선의 시간평균 // 단위 = 틱) : {overall_adt:.2f}\n")
                 md.write(f"- 전체 IQR 폭 (띠 평균 폭 // 단위 = 틱) : {overall_iqr:.2f}\n")
                 md.write(f"- 라우팅 결정당 이웃 조회 수 (전체 평균 // 단위 = 개/결정) : {echo_cost:.2f}\n")
+                # 위 비율의 분자·분모. 시드마다 실행 전체 36개 노드 합을 구하고 시드 10개를 평균.
+                md.write(f"- 이웃 조회 총횟수 (시드 10개 평균 // 단위 = 회) : {np.mean(echo_totals):,.0f}\n")
+                md.write(f"- 라우팅 결정 총횟수 (시드 10개 평균 // 단위 = 회) : {np.mean(route_totals):,.0f}\n")
                 md.write(f"- 경로 변경률 (전체 평균 // 단위 = %) : {switch_rate * 100:.1f}%\n")
                 md.write(f"- R_x (전체 평균, 혼잡 신호 // 단위 없음, 0~1 비율) : {rx_overall:.3f}\n")
                 # R_x 의 분자·분모. 둘 다 전체구간 시간평균 (R_x 와 같은 요약 규칙).
